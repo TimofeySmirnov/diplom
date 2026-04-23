@@ -1,0 +1,1 @@
+export { authApi, type LoginPayload, type RegisterPayload } from '@/lib/api/auth-api';
