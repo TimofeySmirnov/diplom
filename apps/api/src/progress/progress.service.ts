@@ -195,6 +195,7 @@ export class ProgressService {
             id: true,
             fullName: true,
             email: true,
+            group: true,
           },
         },
         lessonProgress:
@@ -389,6 +390,7 @@ export class ProgressService {
             id: true,
             fullName: true,
             email: true,
+            group: true,
           },
         },
       },

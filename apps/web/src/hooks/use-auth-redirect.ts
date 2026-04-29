@@ -21,7 +21,13 @@ export function useAuthRedirect(requiredRole?: UserRole) {
     }
 
     if (requiredRole && user?.role !== requiredRole) {
-      router.replace(user?.role === 'TEACHER' ? '/teacher/courses' : '/student/dashboard');
+      if (user?.role === 'ADMIN') {
+        router.replace('/admin/teachers');
+      } else if (user?.role === 'TEACHER') {
+        router.replace('/teacher/courses');
+      } else {
+        router.replace('/student/dashboard');
+      }
     }
   }, [hydrated, isAuthenticated, pathname, requiredRole, router, user?.role]);
 }

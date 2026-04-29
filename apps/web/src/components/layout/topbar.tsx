@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
@@ -16,19 +16,19 @@ export function Topbar({ title }: TopbarProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:px-8">
       <div className="flex items-center justify-between">
-        <div>
-          
-        </div>
+        <div>{/* intentionally empty to preserve current layout spacing */}</div>
 
         <div className="flex items-center gap-2">
           <div className="hidden text-right md:block">
             <p className="text-sm font-medium text-gray-700">{user?.fullName ?? 'Пользователь'}</p>
             <p className="text-xs text-gray-500">
-              {user?.role === 'TEACHER'
-                ? 'Преподаватель'
-                : user?.role === 'STUDENT'
-                  ? 'Студент'
-                  : 'Гость'}
+              {user?.role === 'ADMIN'
+                ? 'Администратор'
+                : user?.role === 'TEACHER'
+                  ? 'Преподаватель'
+                  : user?.role === 'STUDENT'
+                    ? 'Студент'
+                    : 'Гость'}
             </p>
           </div>
           <Button

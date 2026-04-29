@@ -18,6 +18,11 @@ export default function AuthLayout({
       return;
     }
 
+    if (user?.role === 'ADMIN') {
+      router.replace('/admin/teachers');
+      return;
+    }
+
     router.replace(user?.role === 'TEACHER' ? '/teacher/courses' : '/student/dashboard');
   }, [hydrated, isAuthenticated, router, user?.role]);
 

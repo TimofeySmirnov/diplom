@@ -30,6 +30,7 @@ export function StudentProgressTable({
               <div>
                 <p className="text-sm font-semibold text-gray-700">{row.student.fullName}</p>
                 <p className="text-xs text-gray-500">{row.student.email}</p>
+                <p className="text-xs text-gray-500">Группа: {row.student.group?.trim() || 'не указана'}</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">

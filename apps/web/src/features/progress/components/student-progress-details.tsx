@@ -1,4 +1,4 @@
-import { Badge } from '@/components/ui/badge';
+﻿import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { TeacherStudentProgressDetails } from '@/lib/api';
@@ -14,16 +14,17 @@ export function StudentProgressDetails({ details }: StudentProgressDetailsProps)
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-gray-700">
-            Прогресс: {details.student.fullName}
+            РџСЂРѕРіСЂРµСЃСЃ: {details.student.fullName}
           </h3>
           <p className="text-sm text-gray-500">{details.student.email}</p>
+          <p className="text-sm text-gray-500">Группа: {details.student.group?.trim() || 'не указана'}</p>
         </div>
         <ProgressStatusBadge status={details.summary.status} />
       </div>
 
       <div className="mt-4">
         <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
-          <span>Общий прогресс</span>
+          <span>РћР±С‰РёР№ РїСЂРѕРіСЂРµСЃСЃ</span>
           <span>{details.summary.completionRatePercent}%</span>
         </div>
         <ProgressBar value={details.summary.completionRatePercent} />
@@ -31,18 +32,18 @@ export function StudentProgressDetails({ details }: StudentProgressDetailsProps)
 
       <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-4">
         <p>
-          Завершено: {details.summary.completedLessons}/{details.summary.totalLessons}
+          Р—Р°РІРµСЂС€РµРЅРѕ: {details.summary.completedLessons}/{details.summary.totalLessons}
         </p>
-        <p>Попыток тестов: {details.tests.submittedAttempts}</p>
-        <p>Средний тест: {details.tests.averageScorePercent ?? '—'}%</p>
-        <p>Лучший тест: {details.tests.bestScorePercent ?? '—'}%</p>
+        <p>РџРѕРїС‹С‚РѕРє С‚РµСЃС‚РѕРІ: {details.tests.submittedAttempts}</p>
+        <p>РЎСЂРµРґРЅРёР№ С‚РµСЃС‚: {details.tests.averageScorePercent ?? 'вЂ”'}%</p>
+        <p>Р›СѓС‡С€РёР№ С‚РµСЃС‚: {details.tests.bestScorePercent ?? 'вЂ”'}%</p>
       </div>
 
       <p className="mt-2 text-xs text-gray-500">
-        Последняя активность:{' '}
+        РџРѕСЃР»РµРґРЅСЏСЏ Р°РєС‚РёРІРЅРѕСЃС‚СЊ:{' '}
         {details.lastActivityAt
           ? new Date(details.lastActivityAt).toLocaleString('ru-RU')
-          : 'нет данных'}
+          : 'РЅРµС‚ РґР°РЅРЅС‹С…'}
       </p>
 
       <div className="mt-4 grid gap-3">
@@ -72,16 +73,16 @@ export function StudentProgressDetails({ details }: StudentProgressDetailsProps)
                     </p>
                     <p className="text-xs text-gray-500">
                       {lesson.type === 'LECTURE'
-                        ? 'Лекция'
+                        ? 'Р›РµРєС†РёСЏ'
                         : lesson.type === 'WEBINAR'
-                          ? 'Вебинар'
-                          : 'Тест'}
+                          ? 'Р’РµР±РёРЅР°СЂ'
+                          : 'РўРµСЃС‚'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <ProgressStatusBadge status={lesson.status} />
                     {lesson.tests ? (
-                      <Badge tone="accent">{lesson.tests.attemptsCount} попыт.</Badge>
+                      <Badge tone="accent">{lesson.tests.attemptsCount} РїРѕРїС‹С‚.</Badge>
                     ) : null}
                   </div>
                 </div>

@@ -1,9 +1,10 @@
-export type UserRole = 'STUDENT' | 'TEACHER';
+export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN';
 
 export type PublicUser = {
   id: string;
   email: string;
   fullName: string;
+  group?: string | null;
   role: UserRole;
   createdAt?: string;
   updatedAt?: string;
@@ -186,6 +187,7 @@ export type CourseEnrollment = {
     id: string;
     fullName: string;
     email: string;
+    group?: string | null;
   };
   course?: Course & {
     teacher?: {

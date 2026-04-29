@@ -1,3 +1,4 @@
+export * from './admin-users-api';
 export * from './auth-api';
 export * from './client';
 export * from './courses-api';

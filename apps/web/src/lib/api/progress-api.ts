@@ -95,6 +95,7 @@ export type TeacherCourseProgressOverview = {
       id: string;
       fullName: string;
       email: string;
+      group?: string | null;
     };
     progress: ProgressSummary & {
       lastActivityAt: string | null;
@@ -116,6 +117,7 @@ export type TeacherStudentProgressDetails = {
     id: string;
     fullName: string;
     email: string;
+    group?: string | null;
   };
   enrollment: {
     id: string;

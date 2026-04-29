@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/use-auth';
 import { StudentTestPayload, testsApi } from '@/lib/api';
 
@@ -15,7 +16,17 @@ type StudentTestPageProps = {
   params: { lessonId: string };
 };
 
-type AnswersState = Record<string, string[]>;
+type QuestionAnswerState = {
+  optionIds: string[];
+  textAnswer: string;
+  matchingPairs: Array<{
+    leftId: string;
+    rightId: string;
+  }>;
+  orderingItemIds: string[];
+};
+
+type AnswersState = Record<string, QuestionAnswerState>;
 
 export default function StudentTestPage({ params }: StudentTestPageProps) {
   const router = useRouter();
@@ -44,7 +55,16 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
 
       const initialAnswers: AnswersState = {};
       data.questions.forEach((question) => {
-        initialAnswers[question.id] = [];
+        initialAnswers[question.id] = {
+          optionIds: [],
+          textAnswer: '',
+          matchingPairs:
+            question.matchingLeftItems?.map((item) => ({
+              leftId: item.id,
+              rightId: '',
+            })) ?? [],
+          orderingItemIds: question.orderingItems?.map((item) => item.id) ?? [],
+        };
       });
       setAnswers(initialAnswers);
     } catch (err) {
@@ -102,18 +122,68 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
   const selectSingleOption = (questionId: string, optionId: string) => {
     setAnswers((prev) => ({
       ...prev,
-      [questionId]: [optionId],
+      [questionId]: {
+        ...prev[questionId],
+        optionIds: [optionId],
+      },
     }));
   };
 
   const toggleMultipleOption = (questionId: string, optionId: string) => {
     setAnswers((prev) => {
-      const current = prev[questionId] ?? [];
+      const current = prev[questionId]?.optionIds ?? [];
       const exists = current.includes(optionId);
 
       return {
         ...prev,
-        [questionId]: exists ? current.filter((id) => id !== optionId) : [...current, optionId],
+        [questionId]: {
+          ...prev[questionId],
+          optionIds: exists ? current.filter((id) => id !== optionId) : [...current, optionId],
+        },
+      };
+    });
+  };
+
+  const setTextAnswer = (questionId: string, value: string) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        textAnswer: value,
+      },
+    }));
+  };
+
+  const setMatchingAnswer = (questionId: string, leftId: string, rightId: string) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        matchingPairs: (prev[questionId]?.matchingPairs ?? []).map((pair) =>
+          pair.leftId === leftId ? { ...pair, rightId } : pair,
+        ),
+      },
+    }));
+  };
+
+  const moveOrderingItem = (questionId: string, itemId: string, direction: 'up' | 'down') => {
+    setAnswers((prev) => {
+      const current = prev[questionId]?.orderingItemIds ?? [];
+      const index = current.findIndex((id) => id === itemId);
+      if (index === -1) return prev;
+
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= current.length) return prev;
+
+      const next = [...current];
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+
+      return {
+        ...prev,
+        [questionId]: {
+          ...prev[questionId],
+          orderingItemIds: next,
+        },
       };
     });
   };
@@ -126,10 +196,40 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
 
     try {
       const payload = {
-        answers: testData.questions.map((question) => ({
-          questionId: question.id,
-          optionIds: answers[question.id] ?? [],
-        })),
+        answers: testData.questions.map((question) => {
+          const answer = answers[question.id];
+
+          if (question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') {
+            return {
+              questionId: question.id,
+              optionIds: answer?.optionIds ?? [],
+            };
+          }
+
+          if (question.type === 'FREE_TEXT') {
+            return {
+              questionId: question.id,
+              textAnswer: answer?.textAnswer ?? '',
+            };
+          }
+
+          if (question.type === 'MATCHING') {
+            return {
+              questionId: question.id,
+              matchingPairs: (answer?.matchingPairs ?? [])
+                .filter((pair) => pair.rightId)
+                .map((pair) => ({
+                  leftId: pair.leftId,
+                  rightId: pair.rightId,
+                })),
+            };
+          }
+
+          return {
+            questionId: question.id,
+            orderingItemIds: answer?.orderingItemIds ?? [],
+          };
+        }),
       };
 
       const submitted = await testsApi.submitAttempt(accessToken, attemptId, payload);
@@ -153,7 +253,7 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
         actions={
           testData ? (
             <Link href={`/student/courses/${testData.lesson.module.courseId}`}>
-              <Button variant="ghost" size="sm">
+              <Button variant="secondary" size="sm">
                 Назад к курсу
               </Button>
             </Link>
@@ -204,7 +304,7 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
             <Card>
               <h2 className="text-lg font-semibold text-gray-700">Вопросы</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Выберите ответы и отправьте тест для получения результата.
+                Ответьте на вопросы и отправьте тест для получения результата.
               </p>
 
               <div className="mt-4 grid gap-4">
@@ -214,42 +314,123 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
                       <p className="text-sm font-semibold text-gray-700">
                         {index + 1}. {question.text}
                       </p>
-                      <Badge tone="neutral">
-                        {question.type === 'SINGLE_CHOICE' ? 'Один вариант' : 'Несколько вариантов'}
-                      </Badge>
+                      <Badge tone="neutral">{typeLabel(question.type)}</Badge>
                       <Badge tone="accent">{question.points} балл.</Badge>
                     </div>
 
-                    <div className="mt-3 grid gap-2">
-                      {question.options.map((option) => {
-                        const selected = (answers[question.id] ?? []).includes(option.id);
+                    {(question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') ? (
+                      <div className="mt-3 grid gap-2">
+                        {question.options.map((option) => {
+                          const selected = (answers[question.id]?.optionIds ?? []).includes(option.id);
 
-                        return (
-                          <label
-                            key={option.id}
-                            className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                          return (
+                            <label
+                              key={option.id}
+                              className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                            >
+                              {question.type === 'SINGLE_CHOICE' ? (
+                                <input
+                                  type="radio"
+                                  name={`question-${question.id}`}
+                                  checked={selected}
+                                  onChange={() => selectSingleOption(question.id, option.id)}
+                                  className="h-4 w-4 text-emerald-500"
+                                />
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => toggleMultipleOption(question.id, option.id)}
+                                  className="h-4 w-4 rounded border-gray-200 text-emerald-500"
+                                />
+                              )}
+                              <span>{option.text}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {question.type === 'FREE_TEXT' ? (
+                      <div className="mt-3">
+                        <Textarea
+                          rows={3}
+                          value={answers[question.id]?.textAnswer ?? ''}
+                          onChange={(event) => setTextAnswer(question.id, event.target.value)}
+                          placeholder="Введите ответ"
+                        />
+                      </div>
+                    ) : null}
+
+                    {question.type === 'MATCHING' ? (
+                      <div className="mt-3 grid gap-2">
+                        {(question.matchingLeftItems ?? []).map((leftItem) => (
+                          <div
+                            key={leftItem.id}
+                            className="grid gap-2 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-[1fr_auto_1fr]"
                           >
-                            {question.type === 'SINGLE_CHOICE' ? (
-                              <input
-                                type="radio"
-                                name={`question-${question.id}`}
-                                checked={selected}
-                                onChange={() => selectSingleOption(question.id, option.id)}
-                                className="h-4 w-4 text-emerald-500"
-                              />
-                            ) : (
-                              <input
-                                type="checkbox"
-                                checked={selected}
-                                onChange={() => toggleMultipleOption(question.id, option.id)}
-                                className="h-4 w-4 rounded border-gray-200 text-emerald-500"
-                              />
-                            )}
-                            <span>{option.text}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
+                            <div className="flex items-center text-sm text-gray-700">{leftItem.text}</div>
+                            <div className="flex items-center justify-center text-gray-500">→</div>
+                            <select
+                              value={
+                                answers[question.id]?.matchingPairs.find(
+                                  (pair) => pair.leftId === leftItem.id,
+                                )?.rightId ?? ''
+                              }
+                              onChange={(event) =>
+                                setMatchingAnswer(question.id, leftItem.id, event.target.value)
+                              }
+                              className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                            >
+                              <option value="">Выберите соответствие</option>
+                              {(question.matchingRightItems ?? []).map((rightItem) => (
+                                <option key={rightItem.id} value={rightItem.id}>
+                                  {rightItem.text}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {question.type === 'ORDERING' ? (
+                      <div className="mt-3 grid gap-2">
+                        {(answers[question.id]?.orderingItemIds ?? []).map((itemId, itemIndex) => {
+                          const item = question.orderingItems?.find((entry) => entry.id === itemId);
+                          if (!item) return null;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-2"
+                            >
+                              <span className="w-5 text-sm text-gray-500">{itemIndex + 1}.</span>
+                              <span className="flex-1 text-sm text-gray-700">{item.text}</span>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => moveOrderingItem(question.id, item.id, 'up')}
+                                disabled={itemIndex === 0}
+                              >
+                                Вверх
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => moveOrderingItem(question.id, item.id, 'down')}
+                                disabled={
+                                  itemIndex ===
+                                  (answers[question.id]?.orderingItemIds.length ?? 0) - 1
+                                }
+                              >
+                                Вниз
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -291,6 +472,14 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
       ) : null}
     </div>
   );
+}
+
+function typeLabel(type: StudentTestPayload['questions'][number]['type']) {
+  if (type === 'SINGLE_CHOICE') return 'Один вариант';
+  if (type === 'MULTIPLE_CHOICE') return 'Несколько вариантов';
+  if (type === 'FREE_TEXT') return 'Свободный ответ';
+  if (type === 'MATCHING') return 'Сопоставление';
+  return 'Порядок';
 }
 
 function LoadingBlock() {

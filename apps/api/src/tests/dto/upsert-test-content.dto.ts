@@ -8,6 +8,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
   MinLength,
   ValidateNested,
@@ -20,6 +21,34 @@ class UpsertTestQuestionOptionDto {
 
   @IsBoolean()
   isCorrect!: boolean;
+}
+
+class UpsertMatchingPairDto {
+  @IsOptional()
+  @IsUUID()
+  leftId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  rightId?: string;
+
+  @IsString()
+  @MinLength(1)
+  left!: string;
+
+  @IsString()
+  @MinLength(1)
+  right!: string;
+}
+
+class UpsertOrderingItemDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @IsString()
+  @MinLength(1)
+  text!: string;
 }
 
 class UpsertTestQuestionDto {
@@ -39,11 +68,28 @@ class UpsertTestQuestionDto {
   @Min(1)
   points?: number;
 
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(2)
   @ValidateNested({ each: true })
   @Type(() => UpsertTestQuestionOptionDto)
-  options!: UpsertTestQuestionOptionDto[];
+  options?: UpsertTestQuestionOptionDto[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  acceptedAnswers?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpsertMatchingPairDto)
+  matchingPairs?: UpsertMatchingPairDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpsertOrderingItemDto)
+  orderingItems?: UpsertOrderingItemDto[];
 }
 
 export class UpsertTestContentDto {

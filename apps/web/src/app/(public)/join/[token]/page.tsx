@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -24,6 +24,18 @@ export default function JoinByInvitePage({ params }: JoinByInvitePageProps) {
   const [courseId, setCourseId] = useState<string | null>(null);
 
   const nextPath = useMemo(() => `/join/${params.token}`, [params.token]);
+
+  const getCabinetRoute = useCallback((): Route => {
+    if (user?.role === 'ADMIN') return '/admin/teachers';
+    if (user?.role === 'TEACHER') return '/teacher/courses';
+    return '/student/dashboard';
+  }, [user?.role]);
+
+  const getRoleLabel = useCallback(() => {
+    if (user?.role === 'ADMIN') return 'Роль: администратор';
+    if (user?.role === 'TEACHER') return 'Роль: преподаватель';
+    return 'Роль: студент';
+  }, [user?.role]);
 
   const acceptInvitation = useCallback(async () => {
     if (!accessToken) return;
@@ -62,21 +74,17 @@ export default function JoinByInvitePage({ params }: JoinByInvitePageProps) {
         <h1 className="text-2xl font-semibold text-gray-700">Приглашение на курс</h1>
         <p className="mt-2 break-all text-sm text-gray-500">Токен: {params.token}</p>
 
-        {!hydrated ? (
-          <p className="mt-4 text-sm text-gray-500">Проверяем сессию...</p>
-        ) : null}
+        {!hydrated ? <p className="mt-4 text-sm text-gray-500">Проверяем сессию...</p> : null}
 
         {hydrated && !isAuthenticated ? (
           <div className="mt-4 grid gap-3">
             <p className="text-sm text-gray-500">
-              Чтобы присоединиться к курсу, войдите как студент или создайте аккаунт.
+              Чтобы присоединиться к курсу, войдите как студент. Если аккаунта нет, обратитесь к
+              преподавателю или администратору.
             </p>
             <div className="flex flex-wrap gap-2">
               <Link href={`/login?next=${encodeURIComponent(nextPath)}` as Route}>
                 <Button>Войти и присоединиться</Button>
-              </Link>
-              <Link href={`/register?next=${encodeURIComponent(nextPath)}` as Route}>
-                <Button variant="secondary">Создать аккаунт</Button>
               </Link>
             </div>
           </div>
@@ -94,9 +102,7 @@ export default function JoinByInvitePage({ params }: JoinByInvitePageProps) {
                       ? 'Ошибка'
                       : 'Ожидание'}
               </Badge>
-              <span className="text-sm text-gray-500">
-                {user?.role === 'STUDENT' ? 'Роль: студент' : 'Роль: преподаватель'}
-              </span>
+              <span className="text-sm text-gray-500">{getRoleLabel()}</span>
             </div>
 
             {status === 'joining' ? <p className="text-sm text-gray-500">Записываем вас на курс...</p> : null}
@@ -117,11 +123,7 @@ export default function JoinByInvitePage({ params }: JoinByInvitePageProps) {
                 </Button>
               ) : null}
 
-              <Link
-                href={
-                  (user?.role === 'TEACHER' ? '/teacher/courses' : '/student/dashboard') as Route
-                }
-              >
+              <Link href={getCabinetRoute()}>
                 <Button variant="secondary">В кабинет</Button>
               </Link>
             </div>

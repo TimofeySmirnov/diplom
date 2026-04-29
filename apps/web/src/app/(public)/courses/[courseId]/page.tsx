@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
@@ -72,9 +72,7 @@ export default function CourseDetailPage({ params }: CourseDetailPageProps) {
         </div>
 
         <p className="mt-3 text-base text-gray-500">{course.shortDescription}</p>
-        <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-gray-500">
-          {course.fullDescription}
-        </p>
+        <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-gray-500">{course.fullDescription}</p>
 
         <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-gray-500">
           <span>Преподаватель: {course.teacher?.fullName ?? 'Не указан'}</span>
@@ -83,8 +81,8 @@ export default function CourseDetailPage({ params }: CourseDetailPageProps) {
         </div>
 
         <div className="mt-6 flex gap-2">
-          <Link href="/register">
-            <Button>Присоединиться как студент</Button>
+          <Link href="/login">
+            <Button>Войти как студент</Button>
           </Link>
           <Link href="/courses">
             <Button variant="secondary">Назад в каталог</Button>

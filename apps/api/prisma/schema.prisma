@@ -10,6 +10,7 @@ datasource db {
 enum UserRole {
   STUDENT
   TEACHER
+  ADMIN
 }
 
 enum CourseStatus {
@@ -37,6 +38,9 @@ enum LessonProgressStatus {
 enum QuestionType {
   SINGLE_CHOICE
   MULTIPLE_CHOICE
+  FREE_TEXT
+  MATCHING
+  ORDERING
 }
 
 enum TestAttemptStatus {
@@ -49,6 +53,7 @@ model User {
   email              String             @unique
   passwordHash       String
   fullName           String
+  group              String?
   role               UserRole
   teacherCourses     Course[]           @relation("TeacherCourses")
   studentEnrollments Enrollment[]       @relation("StudentEnrollments")
@@ -189,6 +194,9 @@ model TestQuestion {
   explanation    String?
   order          Int
   points         Int                  @default(1)
+  freeTextAcceptedAnswers Json?
+  matchingPairs  Json?
+  orderingItems  Json?
   testLesson     TestLesson           @relation(fields: [testLessonId], references: [lessonId], onDelete: Cascade)
   options        TestQuestionOption[]
   attemptAnswers TestAttemptAnswer[]
@@ -281,6 +289,9 @@ model TestAttemptAnswer {
   questionId      String
   isCorrect       Boolean                   @default(false)
   pointsAwarded   Int                       @default(0)
+  textAnswer      String?
+  matchingAnswer  Json?
+  orderingAnswer  Json?
   attempt         TestAttempt               @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question        TestQuestion              @relation(fields: [questionId], references: [id], onDelete: Restrict)
   selectedOptions TestAttemptAnswerOption[]

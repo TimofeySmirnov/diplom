@@ -1,5 +1,5 @@
 import {
-  ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -16,6 +16,7 @@ type PublicUser = {
   id: string;
   email: string;
   fullName: string;
+  group: string | null;
   role: UserRole;
   createdAt: Date;
   updatedAt: Date;
@@ -34,26 +35,10 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
-    });
-
-    if (existingUser) {
-      throw new ConflictException('User with this email already exists');
-    }
-
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email.toLowerCase(),
-        passwordHash,
-        fullName: dto.fullName,
-        role: dto.role,
-      },
-    });
-
-    return this.buildAuthResult(user);
+    void dto;
+    throw new ForbiddenException(
+      'Public registration is disabled. Contact your teacher or administrator',
+    );
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
@@ -104,6 +89,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      group: user.group,
       role: user.role as UserRole,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

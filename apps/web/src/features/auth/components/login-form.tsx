@@ -1,7 +1,6 @@
-'use client';
+﻿'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import Link from 'next/link';
 import type { Route } from 'next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
@@ -39,6 +38,11 @@ export function LoginForm() {
       const response = await authApi.login(values);
       setSession(response);
 
+      if (response.user.role === 'ADMIN') {
+        router.replace('/admin/teachers');
+        return;
+      }
+
       if (response.user.role === 'TEACHER') {
         router.replace('/teacher/courses');
         return;
@@ -52,9 +56,7 @@ export function LoginForm() {
 
       router.replace('/student/dashboard');
     } catch (error) {
-      setServerError(
-        error instanceof Error ? error.message : 'Не удалось выполнить вход',
-      );
+      setServerError(error instanceof Error ? error.message : 'Не удалось выполнить вход');
     }
   });
 
@@ -87,10 +89,7 @@ export function LoginForm() {
       </Button>
 
       <p className="text-center text-sm text-gray-500">
-        Впервые в ZSkills?{' '}
-        <Link href="/register" className="font-medium text-emerald-500 hover:underline">
-          Создать аккаунт
-        </Link>
+        Нет аккаунта? Обратитесь к преподавателю или администратору.
       </p>
     </form>
   );

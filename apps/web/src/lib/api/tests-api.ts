@@ -1,6 +1,11 @@
 import { apiRequest } from './client';
 
-export type TestQuestionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
+export type TestQuestionType =
+  | 'SINGLE_CHOICE'
+  | 'MULTIPLE_CHOICE'
+  | 'FREE_TEXT'
+  | 'MATCHING'
+  | 'ORDERING';
 
 export type TeacherTestOption = {
   id: string;
@@ -17,6 +22,17 @@ export type TeacherTestQuestion = {
   order: number;
   points: number;
   options: TeacherTestOption[];
+  acceptedAnswers: string[];
+  matchingPairs: Array<{
+    leftId: string;
+    rightId: string;
+    left: string;
+    right: string;
+  }>;
+  orderingItems: Array<{
+    id: string;
+    text: string;
+  }>;
 };
 
 export type TeacherTestContent = {
@@ -46,9 +62,20 @@ export type UpsertTestContentPayload = {
     explanation?: string;
     type: TestQuestionType;
     points?: number;
-    options: Array<{
+    options?: Array<{
       text: string;
       isCorrect: boolean;
+    }>;
+    acceptedAnswers?: string[];
+    matchingPairs?: Array<{
+      leftId?: string;
+      rightId?: string;
+      left: string;
+      right: string;
+    }>;
+    orderingItems?: Array<{
+      id?: string;
+      text: string;
     }>;
   }>;
 };
@@ -67,6 +94,18 @@ export type StudentTestQuestion = {
   order: number;
   points: number;
   options: StudentTestOption[];
+  matchingLeftItems?: Array<{
+    id: string;
+    text: string;
+  }>;
+  matchingRightItems?: Array<{
+    id: string;
+    text: string;
+  }>;
+  orderingItems?: Array<{
+    id: string;
+    text: string;
+  }>;
 };
 
 export type StudentTestPayload = {
@@ -115,7 +154,13 @@ export type StartTestAttemptResponse = {
 export type SubmitTestAttemptPayload = {
   answers: Array<{
     questionId: string;
-    optionIds: string[];
+    optionIds?: string[];
+    textAnswer?: string;
+    matchingPairs?: Array<{
+      leftId: string;
+      rightId: string;
+    }>;
+    orderingItemIds?: string[];
   }>;
 };
 
@@ -145,6 +190,28 @@ export type SubmitTestAttemptResponse = {
       isCorrect: boolean;
       selectedOptionIds: string[];
       correctOptionIds: string[];
+      selectedTextAnswer: string | null;
+      acceptedAnswers: string[];
+      selectedMatchingPairs: Array<{
+        leftId: string;
+        left: string;
+        correctRightId: string;
+        correctRight: string;
+        selectedRightId: string | null;
+        selectedRight: string | null;
+      }>;
+      correctMatchingPairs: Array<{
+        leftId: string;
+        left: string;
+        rightId: string;
+        right: string;
+      }>;
+      selectedOrderingItemIds: string[];
+      correctOrderingItemIds: string[];
+      orderingItems: Array<{
+        id: string;
+        text: string;
+      }>;
       options: Array<{
         id: string;
         text: string;
@@ -184,6 +251,28 @@ export type TestAttemptResultPayload = {
     pointsAwarded: number;
     selectedOptionIds: string[];
     correctOptionIds: string[];
+    selectedTextAnswer: string | null;
+    acceptedAnswers: string[];
+    selectedMatchingPairs: Array<{
+      leftId: string;
+      left: string;
+      correctRightId: string;
+      correctRight: string;
+      selectedRightId: string | null;
+      selectedRight: string | null;
+    }>;
+    correctMatchingPairs: Array<{
+      leftId: string;
+      left: string;
+      rightId: string;
+      right: string;
+    }>;
+    selectedOrderingItemIds: string[];
+    correctOrderingItemIds: string[];
+    orderingItems: Array<{
+      id: string;
+      text: string;
+    }>;
     options: Array<{
       id: string;
       text: string;

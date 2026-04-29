@@ -113,23 +113,77 @@ export default function StudentTestResultPage({ params }: StudentTestResultPageP
                     </Badge>
                   </div>
 
-                  <div className="mt-3 grid gap-2">
-                    {question.options.map((option) => {
-                      const isSelected = question.selectedOptionIds.includes(option.id);
-                      const isCorrect = question.correctOptionIds.includes(option.id);
+                  {(question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') ? (
+                    <div className="mt-3 grid gap-2">
+                      {question.options.map((option) => {
+                        const isSelected = question.selectedOptionIds.includes(option.id);
+                        const isCorrect = question.correctOptionIds.includes(option.id);
 
-                      return (
+                        return (
+                          <div
+                            key={option.id}
+                            className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                          >
+                            <span className="text-gray-700">{option.text}</span>
+                            {isSelected ? <Badge tone="accent">Выбрано</Badge> : null}
+                            {isCorrect ? <Badge tone="success">Верно</Badge> : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {question.type === 'FREE_TEXT' ? (
+                    <div className="mt-3 grid gap-2">
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        Ваш ответ: {question.selectedTextAnswer || '—'}
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        Допустимые ответы: {question.acceptedAnswers.join(' | ') || '—'}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {question.type === 'MATCHING' ? (
+                    <div className="mt-3 grid gap-2">
+                      {question.selectedMatchingPairs.map((pair) => (
                         <div
-                          key={option.id}
-                          className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                          key={pair.leftId}
+                          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
                         >
-                          <span className="text-gray-700">{option.text}</span>
-                          {isSelected ? <Badge tone="accent">Выбрано</Badge> : null}
-                          {isCorrect ? <Badge tone="success">Верно</Badge> : null}
+                          <div>{pair.left}</div>
+                          <div className="text-xs text-gray-500">
+                            Ваш выбор: {pair.selectedRight ?? '—'} | Правильно: {pair.correctRight}
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {question.type === 'ORDERING' ? (
+                    <div className="mt-3 grid gap-2">
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <p className="font-medium">Ваш порядок:</p>
+                        <ol className="mt-1 list-decimal pl-5">
+                          {question.selectedOrderingItemIds.map((itemId) => {
+                            const item = question.orderingItems.find((entry) => entry.id === itemId);
+                            if (!item) return null;
+                            return <li key={item.id}>{item.text}</li>;
+                          })}
+                        </ol>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                        <p className="font-medium">Правильный порядок:</p>
+                        <ol className="mt-1 list-decimal pl-5">
+                          {question.correctOrderingItemIds.map((itemId) => {
+                            const item = question.orderingItems.find((entry) => entry.id === itemId);
+                            if (!item) return null;
+                            return <li key={`correct-${item.id}`}>{item.text}</li>;
+                          })}
+                        </ol>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {question.explanation ? (
                     <p className="mt-3 text-xs text-gray-500">Пояснение: {question.explanation}</p>

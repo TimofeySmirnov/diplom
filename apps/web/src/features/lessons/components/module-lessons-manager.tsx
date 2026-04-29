@@ -1,13 +1,21 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   CreateLessonPayload,
+  LessonTransferPayload,
   LessonLecturePayload,
   LessonTestPayload,
   LessonWebinarPayload,
@@ -73,7 +81,9 @@ export function ModuleLessonsManager({
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const [createState, setCreateState] = useState<LessonEditorState>(() =>
     createEmptyLessonState(),
@@ -285,6 +295,63 @@ export function ModuleLessonsManager({
     }
   };
 
+  const exportLesson = async (lesson: Lesson) => {
+    if (!accessToken) return;
+    if (lesson.type !== 'LECTURE' && lesson.type !== 'TEST') return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const payload = await lessonsApi.exportLesson(accessToken, lesson.id);
+      const fileName = buildExportFileName(lesson);
+      downloadJsonFile(fileName, payload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось экспортировать урок');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openImportPicker = () => {
+    importInputRef.current?.click();
+  };
+
+  const importLessonFromFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !accessToken) return;
+
+    setImporting(true);
+    setError(null);
+
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText) as unknown;
+
+      if (!looksLikeLessonTransferPayload(parsed)) {
+        throw new Error('Файл не похож на поддерживаемый формат экспорта ZSkills');
+      }
+
+      await lessonsApi.importLessonToModule(
+        accessToken,
+        moduleId,
+        parsed as LessonTransferPayload,
+      );
+
+      await loadLessons();
+      await onChanged?.();
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        setError('Некорректный JSON-файл. Проверьте формат экспорта.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Не удалось импортировать урок');
+      }
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="grid gap-4">
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -371,6 +438,21 @@ export function ModuleLessonsManager({
             <Button onClick={() => void submitCreate()} disabled={!canCreate || saving}>
               {saving ? 'Сохранение...' : 'Добавить урок'}
             </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={openImportPicker}
+              disabled={saving || importing}
+            >
+              {importing ? 'Импорт...' : 'Импорт JSON'}
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => void importLessonFromFile(event)}
+            />
           </div>
         </div>
       </div>
@@ -538,6 +620,16 @@ export function ModuleLessonsManager({
                       >
                         Удалить
                       </Button>
+                      {(lesson.type === 'LECTURE' || lesson.type === 'TEST') ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void exportLesson(lesson)}
+                          disabled={saving || importing}
+                        >
+                          Экспорт JSON
+                        </Button>
+                      ) : null}
                       {lesson.type === 'LECTURE' ? (
                         <Link
                           href={`/teacher/courses/${courseId}/modules/${moduleId}/lessons/${lesson.id}/lecture`}
@@ -904,3 +996,67 @@ function formatDateTime(value: string): string {
   if (Number.isNaN(parsed.getTime())) return 'не запланирован';
   return parsed.toLocaleString();
 }
+
+function buildExportFileName(lesson: Lesson) {
+  const normalizedTitle = lesson.title
+    .toLowerCase()
+    .replace(/[^a-zа-я0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+
+  const titlePart = normalizedTitle || `lesson-${lesson.orderIndex}`;
+  const typePart = lesson.type.toLowerCase();
+  return `${typePart}-${titlePart}.json`;
+}
+
+function downloadJsonFile(fileName: string, payload: unknown) {
+  const serialized = JSON.stringify(payload, null, 2);
+  const blob = new Blob([serialized], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+}
+
+function looksLikeLessonTransferPayload(value: unknown): value is LessonTransferPayload {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const payload = value as Record<string, unknown>;
+  const format = payload.format;
+  const version = payload.version;
+  const lessonType = payload.lessonType;
+  const lesson = payload.lesson;
+
+  if (format !== 'zskills.lesson' || version !== 1) {
+    return false;
+  }
+  if (lessonType !== 'lecture' && lessonType !== 'test') {
+    return false;
+  }
+  if (!lesson || typeof lesson !== 'object' || Array.isArray(lesson)) {
+    return false;
+  }
+
+  if (lessonType === 'lecture') {
+    return Boolean(
+      payload.lecture &&
+        typeof payload.lecture === 'object' &&
+        !Array.isArray(payload.lecture),
+    );
+  }
+
+  return Boolean(
+    payload.test &&
+      typeof payload.test === 'object' &&
+      !Array.isArray(payload.test),
+  );
+}
+

@@ -11,3 +11,8 @@ export const TEACHER_NAV: NavItem[] = [
   { href: '/teacher/courses/new', label: 'Новый курс' },
 ];
 
+export const ADMIN_NAV: NavItem[] = [
+  { href: '/admin/teachers', label: 'Преподаватели' },
+  { href: '/admin/students', label: 'Студенты' },
+];
+

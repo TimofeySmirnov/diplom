@@ -27,6 +27,18 @@ type OptionForm = {
   isCorrect: boolean;
 };
 
+type MatchingPairForm = {
+  leftId: string;
+  rightId: string;
+  left: string;
+  right: string;
+};
+
+type OrderingItemForm = {
+  id: string;
+  text: string;
+};
+
 type QuestionForm = {
   id: string;
   text: string;
@@ -34,6 +46,9 @@ type QuestionForm = {
   type: TestQuestionType;
   points: string;
   options: OptionForm[];
+  acceptedAnswers: string[];
+  matchingPairs: MatchingPairForm[];
+  orderingItems: OrderingItemForm[];
 };
 
 export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPageProps) {
@@ -76,11 +91,32 @@ export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPag
         explanation: question.explanation ?? '',
         type: question.type,
         points: String(question.points),
-        options: question.options.map((option) => ({
-          id: option.id,
-          text: option.text,
-          isCorrect: option.isCorrect,
-        })),
+        options:
+          question.options.length > 0
+            ? question.options.map((option) => ({
+                id: option.id,
+                text: option.text,
+                isCorrect: option.isCorrect,
+              }))
+            : defaultOptions(),
+        acceptedAnswers:
+          question.acceptedAnswers.length > 0 ? question.acceptedAnswers : [''],
+        matchingPairs:
+          question.matchingPairs.length > 0
+            ? question.matchingPairs.map((pair) => ({
+                leftId: pair.leftId,
+                rightId: pair.rightId,
+                left: pair.left,
+                right: pair.right,
+              }))
+            : [createMatchingPair(), createMatchingPair()],
+        orderingItems:
+          question.orderingItems.length > 0
+            ? question.orderingItems.map((item) => ({
+                id: item.id,
+                text: item.text,
+              }))
+            : [createOrderingItem(), createOrderingItem()],
       })),
     );
   };
@@ -131,20 +167,63 @@ export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPag
     setQuestions((prev) =>
       prev.map((question) => {
         if (question.id !== questionId) return question;
-        if (type === 'MULTIPLE_CHOICE') {
-          return { ...question, type };
+
+        if (type === 'SINGLE_CHOICE') {
+          const options = question.options.length >= 2 ? question.options : defaultOptions();
+          const firstCorrectOptionId =
+            options.find((option) => option.isCorrect)?.id ?? options[0].id;
+          return {
+            ...question,
+            type,
+            options: options.map((option) => ({
+              ...option,
+              isCorrect: option.id === firstCorrectOptionId,
+            })),
+          };
         }
 
-        const firstCorrectOptionId =
-          question.options.find((option) => option.isCorrect)?.id ?? question.options[0]?.id;
+        if (type === 'MULTIPLE_CHOICE') {
+          const options = question.options.length >= 2 ? question.options : defaultOptions();
+          const correctCount = options.filter((option) => option.isCorrect).length;
+          if (correctCount >= 2) {
+            return { ...question, type, options };
+          }
+          return {
+            ...question,
+            type,
+            options: options.map((option, index) => ({
+              ...option,
+              isCorrect: index < 2,
+            })),
+          };
+        }
+
+        if (type === 'FREE_TEXT') {
+          return {
+            ...question,
+            type,
+            acceptedAnswers: question.acceptedAnswers.length > 0 ? question.acceptedAnswers : [''],
+          };
+        }
+
+        if (type === 'MATCHING') {
+          return {
+            ...question,
+            type,
+            matchingPairs:
+              question.matchingPairs.length >= 2
+                ? question.matchingPairs
+                : [createMatchingPair(), createMatchingPair()],
+          };
+        }
 
         return {
           ...question,
           type,
-          options: question.options.map((option) => ({
-            ...option,
-            isCorrect: option.id === firstCorrectOptionId,
-          })),
+          orderingItems:
+            question.orderingItems.length >= 2
+              ? question.orderingItems
+              : [createOrderingItem(), createOrderingItem()],
         };
       }),
     );
@@ -235,6 +314,144 @@ export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPag
     );
   };
 
+  const addAcceptedAnswer = (questionId: string) => {
+    setQuestions((prev) =>
+      prev.map((question) =>
+        question.id === questionId
+          ? { ...question, acceptedAnswers: [...question.acceptedAnswers, ''] }
+          : question,
+      ),
+    );
+  };
+
+  const updateAcceptedAnswer = (
+    questionId: string,
+    answerIndex: number,
+    value: string,
+  ) => {
+    setQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        return {
+          ...question,
+          acceptedAnswers: question.acceptedAnswers.map((answer, index) =>
+            index === answerIndex ? value : answer,
+          ),
+        };
+      }),
+    );
+  };
+
+  const removeAcceptedAnswer = (questionId: string, answerIndex: number) => {
+    setQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        const next = question.acceptedAnswers.filter((_, index) => index !== answerIndex);
+        return {
+          ...question,
+          acceptedAnswers: next.length > 0 ? next : [''],
+        };
+      }),
+    );
+  };
+
+  const addMatchingPair = (questionId: string) => {
+    setQuestions((prev) =>
+      prev.map((question) =>
+        question.id === questionId
+          ? { ...question, matchingPairs: [...question.matchingPairs, createMatchingPair()] }
+          : question,
+      ),
+    );
+  };
+
+  const updateMatchingPair = (
+    questionId: string,
+    pairLeftId: string,
+    patch: Partial<MatchingPairForm>,
+  ) => {
+    setQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        return {
+          ...question,
+          matchingPairs: question.matchingPairs.map((pair) =>
+            pair.leftId === pairLeftId ? { ...pair, ...patch } : pair,
+          ),
+        };
+      }),
+    );
+  };
+
+  const removeMatchingPair = (questionId: string, pairLeftId: string) => {
+    setQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        const next = question.matchingPairs.filter((pair) => pair.leftId !== pairLeftId);
+        return {
+          ...question,
+          matchingPairs: next.length >= 2 ? next : [createMatchingPair(), createMatchingPair()],
+        };
+      }),
+    );
+  };
+
+  const addOrderingItem = (questionId: string) => {
+    setQuestions((prev) =>
+      prev.map((question) =>
+        question.id === questionId
+          ? { ...question, orderingItems: [...question.orderingItems, createOrderingItem()] }
+          : question,
+      ),
+    );
+  };
+
+  const updateOrderingItem = (questionId: string, itemId: string, value: string) => {
+    setQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        return {
+          ...question,
+          orderingItems: question.orderingItems.map((item) =>
+            item.id === itemId ? { ...item, text: value } : item,
+          ),
+        };
+      }),
+    );
+  };
+
+  const removeOrderingItem = (questionId: string, itemId: string) => {
+    setQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        const next = question.orderingItems.filter((item) => item.id !== itemId);
+        return {
+          ...question,
+          orderingItems: next.length >= 2 ? next : [createOrderingItem(), createOrderingItem()],
+        };
+      }),
+    );
+  };
+
+  const moveOrderingItem = (questionId: string, itemId: string, direction: 'up' | 'down') => {
+    setQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        const index = question.orderingItems.findIndex((item) => item.id === itemId);
+        if (index === -1) return question;
+
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= question.orderingItems.length) {
+          return question;
+        }
+
+        const items = [...question.orderingItems];
+        [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
+        return { ...question, orderingItems: items };
+      }),
+    );
+  };
+
   const saveContent = async () => {
     if (!accessToken || !content) return;
 
@@ -259,10 +476,33 @@ export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPag
           explanation: question.explanation.trim() || undefined,
           type: question.type,
           points: toOptionalInt(question.points) ?? 1,
-          options: question.options.map((option) => ({
-            text: option.text.trim(),
-            isCorrect: option.isCorrect,
-          })),
+          options:
+            question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE'
+              ? question.options.map((option) => ({
+                  text: option.text.trim(),
+                  isCorrect: option.isCorrect,
+                }))
+              : undefined,
+          acceptedAnswers:
+            question.type === 'FREE_TEXT'
+              ? question.acceptedAnswers.map((answer) => answer.trim()).filter(Boolean)
+              : undefined,
+          matchingPairs:
+            question.type === 'MATCHING'
+              ? question.matchingPairs.map((pair) => ({
+                  leftId: pair.leftId,
+                  rightId: pair.rightId,
+                  left: pair.left.trim(),
+                  right: pair.right.trim(),
+                }))
+              : undefined,
+          orderingItems:
+            question.type === 'ORDERING'
+              ? question.orderingItems.map((item) => ({
+                  id: item.id,
+                  text: item.text.trim(),
+                }))
+              : undefined,
         })),
       });
       hydrateFromContent(updated);
@@ -316,7 +556,7 @@ export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPag
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="warning">Тест</Badge>
               <Badge tone={content.lesson.isPublished ? 'success' : 'neutral'}>
-                {content.lesson.isPublished ? 'Опубликован урок' : 'Черновик урока'}
+                {content.lesson.isPublished ? 'Урок опубликован' : 'Черновик урока'}
               </Badge>
             </div>
 
@@ -418,6 +658,9 @@ export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPag
                           >
                             <option value="SINGLE_CHOICE">Один правильный вариант</option>
                             <option value="MULTIPLE_CHOICE">Несколько правильных вариантов</option>
+                            <option value="FREE_TEXT">Свободный текст</option>
+                            <option value="MATCHING">Сопоставление</option>
+                            <option value="ORDERING">Правильный порядок</option>
                           </select>
                         </div>
                         <div>
@@ -435,56 +678,207 @@ export default function TeacherTestBuilderPage({ params }: TeacherTestBuilderPag
                       </div>
                     </div>
 
-                    <div className="mt-3 grid gap-2">
-                      {question.options.map((option, optionIndex) => (
-                        <div
-                          key={option.id}
-                          className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-2"
-                        >
-                          {question.type === 'SINGLE_CHOICE' ? (
-                            <input
-                              type="radio"
-                              checked={option.isCorrect}
-                              onChange={() => toggleOptionCorrect(question.id, option.id)}
-                              name={`question-${question.id}`}
-                              className="h-4 w-4 text-emerald-500"
-                            />
-                          ) : (
-                            <input
-                              type="checkbox"
-                              checked={option.isCorrect}
-                              onChange={() => toggleOptionCorrect(question.id, option.id)}
-                              className="h-4 w-4 rounded border-gray-200 text-emerald-500"
-                            />
-                          )}
+                    {(question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') ? (
+                      <>
+                        <div className="mt-3 grid gap-2">
+                          {question.options.map((option, optionIndex) => (
+                            <div
+                              key={option.id}
+                              className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-2"
+                            >
+                              {question.type === 'SINGLE_CHOICE' ? (
+                                <input
+                                  type="radio"
+                                  checked={option.isCorrect}
+                                  onChange={() => toggleOptionCorrect(question.id, option.id)}
+                                  name={`question-${question.id}`}
+                                  className="h-4 w-4 text-emerald-500"
+                                />
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  checked={option.isCorrect}
+                                  onChange={() => toggleOptionCorrect(question.id, option.id)}
+                                  className="h-4 w-4 rounded border-gray-200 text-emerald-500"
+                                />
+                              )}
 
-                          <Input
-                            value={option.text}
-                            onChange={(event) =>
-                              updateOption(question.id, option.id, {
-                                text: event.target.value,
-                              })
-                            }
-                            placeholder={`Вариант ${optionIndex + 1}`}
-                          />
+                              <Input
+                                value={option.text}
+                                onChange={(event) =>
+                                  updateOption(question.id, option.id, {
+                                    text: event.target.value,
+                                  })
+                                }
+                                placeholder={`Вариант ${optionIndex + 1}`}
+                              />
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => removeOption(question.id, option.id)}
-                            disabled={question.options.length <= 2}
-                          >
-                            Удалить
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeOption(question.id, option.id)}
+                                disabled={question.options.length <= 2}
+                              >
+                                Удалить
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-3">
+                          <Button size="sm" variant="secondary" onClick={() => addOption(question.id)}>
+                            Добавить вариант
                           </Button>
                         </div>
-                      ))}
-                    </div>
+                      </>
+                    ) : null}
 
-                    <div className="mt-3">
-                      <Button size="sm" variant="secondary" onClick={() => addOption(question.id)}>
-                        Добавить вариант
-                      </Button>
-                    </div>
+                    {question.type === 'FREE_TEXT' ? (
+                      <>
+                        <div className="mt-3 grid gap-2">
+                          {question.acceptedAnswers.map((answer, answerIndex) => (
+                            <div
+                              key={`${question.id}-accepted-${answerIndex}`}
+                              className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-2"
+                            >
+                              <Input
+                                value={answer}
+                                onChange={(event) =>
+                                  updateAcceptedAnswer(
+                                    question.id,
+                                    answerIndex,
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder={`Допустимый ответ ${answerIndex + 1}`}
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeAcceptedAnswer(question.id, answerIndex)}
+                                disabled={question.acceptedAnswers.length <= 1}
+                              >
+                                Удалить
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => addAcceptedAnswer(question.id)}
+                          >
+                            Добавить допустимый ответ
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
+
+                    {question.type === 'MATCHING' ? (
+                      <>
+                        <div className="mt-3 grid gap-2">
+                          {question.matchingPairs.map((pair) => (
+                            <div
+                              key={pair.leftId}
+                              className="grid gap-2 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-[1fr_auto_1fr_auto]"
+                            >
+                              <Input
+                                value={pair.left}
+                                onChange={(event) =>
+                                  updateMatchingPair(question.id, pair.leftId, {
+                                    left: event.target.value,
+                                  })
+                                }
+                                placeholder="Левая часть"
+                              />
+                              <div className="flex items-center justify-center text-gray-500">→</div>
+                              <Input
+                                value={pair.right}
+                                onChange={(event) =>
+                                  updateMatchingPair(question.id, pair.leftId, {
+                                    right: event.target.value,
+                                  })
+                                }
+                                placeholder="Правая часть"
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeMatchingPair(question.id, pair.leftId)}
+                                disabled={question.matchingPairs.length <= 2}
+                              >
+                                Удалить
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => addMatchingPair(question.id)}
+                          >
+                            Добавить пару
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
+
+                    {question.type === 'ORDERING' ? (
+                      <>
+                        <div className="mt-3 grid gap-2">
+                          {question.orderingItems.map((item, itemIndex) => (
+                            <div
+                              key={item.id}
+                              className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-2"
+                            >
+                              <span className="w-5 text-sm text-gray-500">{itemIndex + 1}.</span>
+                              <Input
+                                value={item.text}
+                                onChange={(event) =>
+                                  updateOrderingItem(question.id, item.id, event.target.value)
+                                }
+                                placeholder="Элемент порядка"
+                              />
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => moveOrderingItem(question.id, item.id, 'up')}
+                                disabled={itemIndex === 0}
+                              >
+                                Вверх
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => moveOrderingItem(question.id, item.id, 'down')}
+                                disabled={itemIndex === question.orderingItems.length - 1}
+                              >
+                                Вниз
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeOrderingItem(question.id, item.id)}
+                                disabled={question.orderingItems.length <= 2}
+                              >
+                                Удалить
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => addOrderingItem(question.id)}
+                          >
+                            Добавить элемент
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 ))
               )}
@@ -505,15 +899,45 @@ function createEmptyQuestion(): QuestionForm {
     explanation: '',
     type: 'SINGLE_CHOICE',
     points: '1',
-    options: [
-      { id: generateLocalId(), text: '', isCorrect: true },
-      { id: generateLocalId(), text: '', isCorrect: false },
-    ],
+    options: defaultOptions(),
+    acceptedAnswers: [''],
+    matchingPairs: [createMatchingPair(), createMatchingPair()],
+    orderingItems: [createOrderingItem(), createOrderingItem()],
+  };
+}
+
+function defaultOptions(): OptionForm[] {
+  return [
+    { id: generateLocalId(), text: '', isCorrect: true },
+    { id: generateLocalId(), text: '', isCorrect: false },
+  ];
+}
+
+function createMatchingPair(): MatchingPairForm {
+  return {
+    leftId: generateUuid(),
+    rightId: generateUuid(),
+    left: '',
+    right: '',
+  };
+}
+
+function createOrderingItem(): OrderingItemForm {
+  return {
+    id: generateUuid(),
+    text: '',
   };
 }
 
 function generateLocalId() {
   return `tmp-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function generateUuid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return generateLocalId();
 }
 
 function toOptionalInt(value: string): number | undefined {
@@ -535,26 +959,54 @@ function validateQuestions(questions: QuestionForm[]): string | null {
       return `Вопрос ${i + 1}: слишком короткий текст`;
     }
 
-    if (question.options.length < 2) {
-      return `Вопрос ${i + 1} должен иметь минимум 2 варианта`;
+    if (question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') {
+      if (question.options.length < 2) {
+        return `Вопрос ${i + 1} должен иметь минимум 2 варианта`;
+      }
+
+      if (question.options.some((option) => option.text.trim().length === 0)) {
+        return `Вопрос ${i + 1} содержит пустой вариант`;
+      }
+
+      const correctCount = question.options.filter((option) => option.isCorrect).length;
+      if (correctCount === 0) {
+        return `Вопрос ${i + 1} должен иметь хотя бы один правильный вариант`;
+      }
+      if (question.type === 'SINGLE_CHOICE' && correctCount !== 1) {
+        return `Вопрос ${i + 1} должен иметь ровно один правильный вариант`;
+      }
+      if (question.type === 'MULTIPLE_CHOICE' && correctCount < 2) {
+        return `Вопрос ${i + 1} должен иметь минимум два правильных варианта`;
+      }
     }
 
-    const emptyOption = question.options.find((option) => option.text.trim().length === 0);
-    if (emptyOption) {
-      return `Вопрос ${i + 1} содержит пустой вариант`;
+    if (question.type === 'FREE_TEXT') {
+      const answers = question.acceptedAnswers.map((item) => item.trim()).filter(Boolean);
+      if (answers.length === 0) {
+        return `Вопрос ${i + 1} должен иметь хотя бы один допустимый ответ`;
+      }
     }
 
-    const correctCount = question.options.filter((option) => option.isCorrect).length;
-    if (correctCount === 0) {
-      return `Вопрос ${i + 1} должен иметь хотя бы один правильный вариант`;
+    if (question.type === 'MATCHING') {
+      if (question.matchingPairs.length < 2) {
+        return `Вопрос ${i + 1} должен иметь минимум две пары`;
+      }
+      if (
+        question.matchingPairs.some(
+          (pair) => pair.left.trim().length === 0 || pair.right.trim().length === 0,
+        )
+      ) {
+        return `Вопрос ${i + 1} содержит пустую пару сопоставления`;
+      }
     }
 
-    if (question.type === 'SINGLE_CHOICE' && correctCount !== 1) {
-      return `Вопрос ${i + 1} должен иметь ровно один правильный вариант`;
-    }
-
-    if (question.type === 'MULTIPLE_CHOICE' && correctCount < 2) {
-      return `Вопрос ${i + 1} должен иметь минимум два правильных варианта`;
+    if (question.type === 'ORDERING') {
+      if (question.orderingItems.length < 2) {
+        return `Вопрос ${i + 1} должен иметь минимум два элемента порядка`;
+      }
+      if (question.orderingItems.some((item) => item.text.trim().length === 0)) {
+        return `Вопрос ${i + 1} содержит пустой элемент порядка`;
+      }
     }
   }
 

@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+﻿import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
 export default function HomePage() {
   return (
@@ -10,39 +10,33 @@ export default function HomePage() {
           Единое пространство обучения для студентов и преподавателей.
         </h1>
         <p className="mt-4 max-w-2xl text-base text-gray-500">
-          ZSkills - современная LMS-платформа для создания и управления онлайн
-          курсами, на которой удобно учиться и обучать
+          ZSkills - современная LMS-платформа для создания и управления онлайн-курсами, на
+          которой удобно учиться и обучать.
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Link href="/register">
-            <Button>Создать аккаунт</Button>
+          <Link href="/login">
+            <Button>Войти в систему</Button>
           </Link>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card>
-          <h3 className="text-lg font-semibold text-gray-700">
-            Удобно ученикам и всей команде
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-700">Удобно студентам и команде</h3>
           <p className="mt-2 text-sm text-gray-500">
-            Современный дизайн — ученики не теряются, а вам приятнее работать
+            Понятный интерфейс помогает быстро начать обучение и не теряться в материалах.
           </p>
         </Card>
         <Card>
-          <h3 className="text-lg font-semibold text-gray-700">
-            Всё, что вам нужно — только лучше
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-700">Все форматы в одном месте</h3>
           <p className="mt-2 text-sm text-gray-500">
-            Уроки, задания, тесты, вебинары, — удобнее, чем обычно
+            Лекции, тесты и вебинары собраны в едином рабочем пространстве курса.
           </p>
         </Card>
         <Card>
-          <h3 className="text-lg font-semibold text-gray-700">
-            Безлимит учеников и файлов
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-700">Готово для учебного процесса</h3>
           <p className="mt-2 text-sm text-gray-500">
-            Обучайте и храните материалы без ограничений
+            Создавайте и развивайте курсы, отслеживайте прогресс и управляйте обучением.
           </p>
         </Card>
       </section>

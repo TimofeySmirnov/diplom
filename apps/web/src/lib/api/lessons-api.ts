@@ -131,6 +131,64 @@ export type StudentWebinarPayload = {
   progress: StudentLessonProgress | null;
 };
 
+export type LessonTransferQuestionType =
+  | 'SINGLE_CHOICE'
+  | 'MULTIPLE_CHOICE'
+  | 'FREE_TEXT'
+  | 'MATCHING'
+  | 'ORDERING';
+
+export type LessonTransferPayload =
+  | {
+      format: 'zskills.lesson';
+      version: 1;
+      lessonType: 'lecture';
+      lesson: {
+        title: string;
+        description?: string;
+        orderIndex?: number;
+        isPublished?: boolean;
+      };
+      lecture: {
+        content: Record<string, unknown>;
+      };
+    }
+  | {
+      format: 'zskills.lesson';
+      version: 1;
+      lessonType: 'test';
+      lesson: {
+        title: string;
+        description?: string;
+        orderIndex?: number;
+        isPublished?: boolean;
+      };
+      test: {
+        settings: {
+          passingScore?: number;
+          allowMultipleAttempts?: boolean;
+          maxAttempts?: number;
+          timeLimitMinutes?: number;
+        };
+        questions: Array<{
+          text: string;
+          explanation?: string;
+          type: LessonTransferQuestionType;
+          points?: number;
+          options?: Array<{
+            text: string;
+            isCorrect: boolean;
+          }>;
+          acceptedAnswers?: string[];
+          matchingPairs?: Array<{
+            left: string;
+            right: string;
+          }>;
+          orderingItems?: string[];
+        }>;
+      };
+    };
+
 export const lessonsApi = {
   getById: (lessonId: string, token: string) =>
     apiRequest<Lesson>(`/lessons/${lessonId}`, { token }),
@@ -218,5 +276,23 @@ export const lessonsApi = {
       method: 'PATCH',
       token,
       body: payload,
+    }),
+
+  exportLesson: (token: string, lessonId: string) =>
+    apiRequest<LessonTransferPayload>(`/lessons/${lessonId}/export`, {
+      token,
+    }),
+
+  importLessonToModule: (
+    token: string,
+    moduleId: string,
+    payload: LessonTransferPayload,
+  ) =>
+    apiRequest<Lesson>(`/lessons/module/${moduleId}/import`, {
+      method: 'POST',
+      token,
+      body: {
+        payload,
+      },
     }),
 };

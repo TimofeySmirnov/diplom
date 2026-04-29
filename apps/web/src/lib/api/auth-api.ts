@@ -1,12 +1,11 @@
 import { AuthResponse } from '@/types/api';
-import { PublicUser, UserRole } from '@/types/domain';
+import { PublicUser } from '@/types/domain';
 import { apiRequest } from './client';
 
 export type RegisterPayload = {
   email: string;
   password: string;
   fullName: string;
-  role: UserRole;
 };
 
 export type LoginPayload = {

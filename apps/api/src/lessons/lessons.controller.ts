@@ -17,6 +17,7 @@ import { AuthUser } from '../common/types/auth-user.type';
 import { CreateLectureLessonDto } from './dto/create-lecture-lesson.dto';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { CreateWebinarLessonDto } from './dto/create-webinar-lesson.dto';
+import { ImportLessonDto } from './dto/import-lesson.dto';
 import { ReorderLessonsDto } from './dto/reorder-lessons.dto';
 import { UpdateLectureLessonDto } from './dto/update-lecture-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
@@ -120,6 +121,25 @@ export class LessonsController {
     @Param('moduleId', new ParseUUIDPipe()) moduleId: string,
   ) {
     return this.lessonsService.listByModule(user.userId, moduleId);
+  }
+
+  @UseGuards(JwtAuthGuard, TeacherRoleGuard)
+  @Get(':lessonId/export')
+  exportLesson(
+    @CurrentUser() user: AuthUser,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+  ) {
+    return this.lessonsService.exportLesson(user.userId, lessonId);
+  }
+
+  @UseGuards(JwtAuthGuard, TeacherRoleGuard)
+  @Post('module/:moduleId/import')
+  importLessonToModule(
+    @CurrentUser() user: AuthUser,
+    @Param('moduleId', new ParseUUIDPipe()) moduleId: string,
+    @Body() dto: ImportLessonDto,
+  ) {
+    return this.lessonsService.importLessonToModule(user.userId, moduleId, dto.payload);
   }
 
   @UseGuards(JwtAuthGuard, TeacherRoleGuard)
