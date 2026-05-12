@@ -14,7 +14,7 @@ export function StudentProgressDetails({ details }: StudentProgressDetailsProps)
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-gray-700">
-            РџСЂРѕРіСЂРµСЃСЃ: {details.student.fullName}
+            Прогресс: {details.student.fullName}
           </h3>
           <p className="text-sm text-gray-500">{details.student.email}</p>
           <p className="text-sm text-gray-500">Группа: {details.student.group?.trim() || 'не указана'}</p>
@@ -24,7 +24,7 @@ export function StudentProgressDetails({ details }: StudentProgressDetailsProps)
 
       <div className="mt-4">
         <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
-          <span>РћР±С‰РёР№ РїСЂРѕРіСЂРµСЃСЃ</span>
+          <span>Общий прогресс</span>
           <span>{details.summary.completionRatePercent}%</span>
         </div>
         <ProgressBar value={details.summary.completionRatePercent} />
@@ -32,18 +32,18 @@ export function StudentProgressDetails({ details }: StudentProgressDetailsProps)
 
       <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-4">
         <p>
-          Р—Р°РІРµСЂС€РµРЅРѕ: {details.summary.completedLessons}/{details.summary.totalLessons}
+          Завершено: {details.summary.completedLessons}/{details.summary.totalLessons}
         </p>
-        <p>РџРѕРїС‹С‚РѕРє С‚РµСЃС‚РѕРІ: {details.tests.submittedAttempts}</p>
-        <p>РЎСЂРµРґРЅРёР№ С‚РµСЃС‚: {details.tests.averageScorePercent ?? 'вЂ”'}%</p>
-        <p>Р›СѓС‡С€РёР№ С‚РµСЃС‚: {details.tests.bestScorePercent ?? 'вЂ”'}%</p>
+        <p>Тестовых попыток: {details.tests.submittedAttempts}</p>
+        <p>Средний тест: {details.tests.averageScorePercent ?? '—'}%</p>
+        <p>Лучший тест: {details.tests.bestScorePercent ?? '—'}%</p>
       </div>
 
       <p className="mt-2 text-xs text-gray-500">
-        РџРѕСЃР»РµРґРЅСЏСЏ Р°РєС‚РёРІРЅРѕСЃС‚СЊ:{' '}
+        Последняя активность:{' '}
         {details.lastActivityAt
           ? new Date(details.lastActivityAt).toLocaleString('ru-RU')
-          : 'РЅРµС‚ РґР°РЅРЅС‹С…'}
+          : 'нет данных'}
       </p>
 
       <div className="mt-4 grid gap-3">
@@ -73,16 +73,16 @@ export function StudentProgressDetails({ details }: StudentProgressDetailsProps)
                     </p>
                     <p className="text-xs text-gray-500">
                       {lesson.type === 'LECTURE'
-                        ? 'Р›РµРєС†РёСЏ'
+                        ? 'Лекция'
                         : lesson.type === 'WEBINAR'
-                          ? 'Р’РµР±РёРЅР°СЂ'
-                          : 'РўРµСЃС‚'}
+                          ? 'Вебинар'
+                          : 'Тест'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <ProgressStatusBadge status={lesson.status} />
                     {lesson.tests ? (
-                      <Badge tone="accent">{lesson.tests.attemptsCount} РїРѕРїС‹С‚.</Badge>
+                      <Badge tone="accent">{lesson.tests.attemptsCount} попыт.</Badge>
                     ) : null}
                   </div>
                 </div>

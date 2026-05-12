@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -73,12 +73,12 @@ export default function TeacherStudentAnalyticsPage({
         hint: 'Только отправленные',
       },
       {
-        label: 'Средний тест',
+        label: 'Средний результат тестов',
         value: `${details.tests.averageScorePercent ?? '—'}%`,
         hint: 'По всем попыткам',
       },
       {
-        label: 'Лучший тест',
+        label: 'Лучший результат теста',
         value: `${details.tests.bestScorePercent ?? '—'}%`,
         hint: details.lastActivityAt
           ? `Активность: ${new Date(details.lastActivityAt).toLocaleDateString('ru-RU')}`

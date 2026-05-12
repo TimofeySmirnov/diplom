@@ -8,4 +8,5 @@ export * from './lessons-api';
 export * from './modules-api';
 export * from './progress-api';
 export * from './statistics-api';
+export * from './student-import-api';
 export * from './tests-api';

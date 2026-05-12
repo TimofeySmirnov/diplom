@@ -1,4 +1,4 @@
-import { Badge } from '@/components/ui/badge';
+﻿import { Badge } from '@/components/ui/badge';
 import { LessonProgressStatus } from '@/types/domain';
 
 type ProgressStatusBadgeProps = {

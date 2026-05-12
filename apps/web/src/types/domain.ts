@@ -135,6 +135,7 @@ export type Lesson = {
   lecture?: {
     lessonId: string;
     content: Record<string, unknown>;
+    attachments: string[];
     createdAt?: string;
     updatedAt?: string;
   } | null;

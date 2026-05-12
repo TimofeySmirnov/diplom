@@ -4,19 +4,32 @@ import {
   Delete,
   Get,
   Param,
+  ParseFilePipeBuilder,
   ParseUUIDPipe,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { StudentRoleGuard } from '../common/guards/student-role.guard';
 import { TeacherRoleGuard } from '../common/guards/teacher-role.guard';
 import { AuthUser } from '../common/types/auth-user.type';
+import { ImportStudentsDto } from '../users/dto/import-students.dto';
 import { CreateCourseStudentDto } from './dto/create-course-student.dto';
 import { SearchCourseStudentsQueryDto } from './dto/search-course-students.query.dto';
 import { EnrollmentsService } from './enrollments.service';
+
+const csvFilePipe = new ParseFilePipeBuilder()
+  .addMaxSizeValidator({ maxSize: 1024 * 1024 * 5 })
+  .build({ fileIsRequired: true });
+
+type UploadedCsvFile = {
+  buffer: Buffer;
+};
 
 @Controller('enrollments')
 export class EnrollmentsController {
@@ -62,6 +75,38 @@ export class EnrollmentsController {
       user.userId,
       courseId,
       dto,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard, TeacherRoleGuard)
+  @Post('course/:courseId/students/import/preview')
+  @UseInterceptors(FileInterceptor('file'))
+  previewCourseStudentsImport(
+    @CurrentUser() user: AuthUser,
+    @Param('courseId', new ParseUUIDPipe()) courseId: string,
+    @UploadedFile(csvFilePipe) file: UploadedCsvFile,
+  ) {
+    return this.enrollmentsService.previewCourseStudentImport(
+      user.userId,
+      courseId,
+      file.buffer,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard, TeacherRoleGuard)
+  @Post('course/:courseId/students/import')
+  @UseInterceptors(FileInterceptor('file'))
+  importCourseStudents(
+    @CurrentUser() user: AuthUser,
+    @Param('courseId', new ParseUUIDPipe()) courseId: string,
+    @UploadedFile(csvFilePipe) file: UploadedCsvFile,
+    @Body() dto: ImportStudentsDto,
+  ) {
+    return this.enrollmentsService.importStudentsForCourse(
+      user.userId,
+      courseId,
+      file.buffer,
+      dto.enrollToCourse ?? false,
     );
   }
 

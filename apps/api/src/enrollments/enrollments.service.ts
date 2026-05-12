@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { EnrollmentStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StudentImportService } from '../users/student-import.service';
 import { UsersService } from '../users/users.service';
 import { CreateCourseStudentDto } from './dto/create-course-student.dto';
 import { SearchCourseStudentsQueryDto } from './dto/search-course-students.query.dto';
@@ -15,6 +16,7 @@ export class EnrollmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
+    private readonly studentImportService: StudentImportService,
   ) {}
 
   async listMyEnrollments(studentId: string) {
@@ -180,6 +182,30 @@ export class EnrollmentsService {
         password: dto.password,
       },
     };
+  }
+
+  async previewCourseStudentImport(
+    teacherId: string,
+    courseId: string,
+    csvBuffer: Buffer,
+  ) {
+    await this.assertTeacherOwnsCourse(teacherId, courseId);
+    return this.studentImportService.preview(csvBuffer);
+  }
+
+  async importStudentsForCourse(
+    teacherId: string,
+    courseId: string,
+    csvBuffer: Buffer,
+    enrollToCourse = false,
+  ) {
+    await this.assertTeacherOwnsCourse(teacherId, courseId);
+
+    return this.studentImportService.importStudents(csvBuffer, {
+      importedById: teacherId,
+      courseId,
+      enrollToCourse,
+    });
   }
 
   async enrollExistingStudentForCourse(

@@ -1,6 +1,8 @@
 import { Lesson, LessonType } from '@/types/domain';
 import { apiRequest } from './client';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+
 export type LessonLecturePayload = {
   content: Record<string, unknown>;
 };
@@ -129,6 +131,11 @@ export type StudentWebinarPayload = {
     };
   };
   progress: StudentLessonProgress | null;
+};
+
+export type LectureFilesPayload = {
+  lessonId: string;
+  attachments: string[];
 };
 
 export type LessonTransferQuestionType =
@@ -295,4 +302,72 @@ export const lessonsApi = {
         payload,
       },
     }),
+
+  uploadLectureFiles: async (token: string, lessonId: string, files: File[]) => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    const response = await fetch(`${API_BASE_URL}/lectures/${lessonId}/files`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(await extractErrorMessage(response));
+    }
+
+    return response.json() as Promise<LectureFilesPayload>;
+  },
+
+  deleteLectureFile: async (token: string, lessonId: string, fileUrl: string) => {
+    const response = await fetch(`${API_BASE_URL}/lectures/${lessonId}/files`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ fileUrl }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await extractErrorMessage(response));
+    }
+
+    return response.json() as Promise<LectureFilesPayload>;
+  },
 };
+
+export function resolveStaticFileUrl(fileUrl: string) {
+  if (!fileUrl) return '#';
+  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+    return fileUrl;
+  }
+
+  try {
+    const origin = new URL(API_BASE_URL).origin;
+    return `${origin}${fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`}`;
+  } catch {
+    return fileUrl;
+  }
+}
+
+async function extractErrorMessage(response: Response) {
+  const fallback = `Request failed with status ${response.status}`;
+
+  try {
+    const payload = (await response.json()) as {
+      message?: string | string[];
+    };
+
+    if (!payload?.message) return fallback;
+    if (Array.isArray(payload.message)) return payload.message.join(', ');
+    return payload.message;
+  } catch {
+    return fallback;
+  }
+}

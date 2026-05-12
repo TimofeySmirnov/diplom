@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import { LectureAttachments } from '@/features/lessons/components/lecture-attachments';
 import { LectureRichTextEditor } from '@/features/lessons/components/lecture-rich-text-editor';
 import { useAuth } from '@/hooks/use-auth';
 import { lessonsApi, progressApi, StudentLecturePayload } from '@/lib/api';
@@ -67,9 +68,13 @@ export default function StudentLessonPage({ params }: StudentLessonPageProps) {
     try {
       const progress = await progressApi.markCompleted(accessToken, lectureData.lesson.id);
       setLectureData((prev) => (prev ? { ...prev, progress } : prev));
-      setNotice('Лекция отмечена как завершенная.');
+      setNotice('Лекция отмечена как завершённая.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось отметить лекцию как завершенную');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось отметить лекцию как завершённую',
+      );
     } finally {
       setSaving(false);
     }
@@ -146,8 +151,13 @@ export default function StudentLessonPage({ params }: StudentLessonPageProps) {
           </Card>
 
           <Card>
-            <LectureRichTextEditor content={lectureData.lesson.lecture?.content ?? null} editable={false} />
+            <LectureRichTextEditor
+              content={lectureData.lesson.lecture?.content ?? null}
+              editable={false}
+            />
           </Card>
+
+          <LectureAttachments attachments={lectureData.lesson.lecture?.attachments ?? []} />
 
           {notice ? <p className="text-sm text-emerald-500">{notice}</p> : null}
         </>

@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/ui/page-header';
 import { Textarea } from '@/components/ui/textarea';
+import { LectureAttachments } from '@/features/lessons/components/lecture-attachments';
 import { LectureRichTextEditor } from '@/features/lessons/components/lecture-rich-text-editor';
 import { useAuth } from '@/hooks/use-auth';
 import { lessonsApi } from '@/lib/api';
@@ -36,16 +37,21 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
   const [description, setDescription] = useState('');
   const [isPublished, setIsPublished] = useState(false);
   const [content, setContent] = useState<Record<string, unknown>>(EMPTY_CONTENT);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [deletingFileUrl, setDeletingFileUrl] = useState<string | null>(null);
+
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const loadLecture = useCallback(async () => {
     if (!accessToken) return;
 
     setLoading(true);
-    setError(null);
+    setLoadError(null);
 
     try {
       const data = await lessonsApi.getTeacherLectureById(params.lessonId, accessToken);
@@ -59,7 +65,7 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
           : EMPTY_CONTENT,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить лекцию');
+      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить лекцию.');
     } finally {
       setLoading(false);
     }
@@ -72,13 +78,15 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
 
   const saveLecture = async () => {
     if (!accessToken || !lesson) return;
+
     if (title.trim().length < 2) {
-      setError('Название должно быть не короче 2 символов');
+      setActionError('Название должно быть не короче 2 символов.');
+      setSuccessMessage(null);
       return;
     }
 
     setSaving(true);
-    setError(null);
+    setActionError(null);
     setSuccessMessage(null);
 
     try {
@@ -92,9 +100,85 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
       setLesson(updated);
       setSuccessMessage('Лекция успешно сохранена.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось сохранить лекцию');
+      setActionError(err instanceof Error ? err.message : 'Не удалось сохранить лекцию.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const uploadFiles = async (files: File[]) => {
+    if (!accessToken || !lesson) return;
+
+    setUploadingFiles(true);
+    setActionError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await lessonsApi.uploadLectureFiles(accessToken, lesson.id, files);
+
+      setLesson((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          lecture: prev.lecture
+            ? {
+                ...prev.lecture,
+                attachments: response.attachments,
+              }
+            : {
+                lessonId: prev.id,
+                content,
+                attachments: response.attachments,
+              },
+        };
+      });
+
+      setSuccessMessage('Файлы успешно загружены.');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Не удалось загрузить файлы.');
+      throw err;
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const deleteFile = async (fileUrl: string) => {
+    if (!accessToken || !lesson) return;
+
+    const confirmed = window.confirm('Удалить файл из лекции?');
+    if (!confirmed) return;
+
+    setDeletingFileUrl(fileUrl);
+    setActionError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await lessonsApi.deleteLectureFile(accessToken, lesson.id, fileUrl);
+
+      setLesson((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          lecture: prev.lecture
+            ? {
+                ...prev.lecture,
+                attachments: response.attachments,
+              }
+            : {
+                lessonId: prev.id,
+                content,
+                attachments: response.attachments,
+              },
+        };
+      });
+
+      setSuccessMessage('Файл удален.');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Не удалось удалить файл.');
+    } finally {
+      setDeletingFileUrl(null);
     }
   };
 
@@ -107,7 +191,7 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
     <div className="grid gap-6">
       <PageHeader
         title={lesson ? `Редактор лекции: ${lesson.title}` : 'Редактор лекции'}
-        description="Редактируйте содержание урока и управляйте его доступностью для студентов."
+        description="Редактируйте текст лекции и прикрепленные учебные материалы."
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href={backHref as Route}>
@@ -122,10 +206,10 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
 
       {loading ? <LoadingBlock /> : null}
 
-      {!loading && error ? (
+      {!loading && loadError ? (
         <EmptyState
           title="Не удалось загрузить лекцию"
-          description={error}
+          description={loadError}
           action={
             <Button variant="secondary" onClick={() => void loadLecture()}>
               Повторить
@@ -134,13 +218,13 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
         />
       ) : null}
 
-      {!loading && !error && lesson ? (
+      {!loading && !loadError && lesson ? (
         <>
           <Card>
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="neutral">Лекция</Badge>
               <Badge tone={isPublished ? 'success' : 'warning'}>
-                {isPublished ? 'Опубликован' : 'Черновик'}
+                {isPublished ? 'Опубликована' : 'Черновик'}
               </Badge>
             </div>
 
@@ -171,7 +255,7 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
           <Card>
             <h2 className="text-lg font-semibold text-gray-700">Текст лекции</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Пишите структурированные учебные материалы: заголовки, списки, форматирование.
+              Используйте структурированный текст: заголовки, списки и форматирование.
             </p>
 
             <div className="mt-4">
@@ -183,7 +267,17 @@ export default function TeacherLectureEditorPage({ params }: TeacherLectureEdito
             </div>
           </Card>
 
+          <LectureAttachments
+            attachments={lesson.lecture?.attachments ?? []}
+            canManage
+            uploading={uploadingFiles}
+            deletingFileUrl={deletingFileUrl}
+            onUpload={uploadFiles}
+            onDelete={deleteFile}
+          />
+
           {successMessage ? <p className="text-sm text-emerald-500">{successMessage}</p> : null}
+          {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
         </>
       ) : null}
     </div>

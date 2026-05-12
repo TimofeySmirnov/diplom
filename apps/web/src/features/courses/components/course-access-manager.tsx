@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { StudentImportModal } from '@/features/students/components/student-import-modal';
 import {
   enrollmentsApi,
   invitationsApi,
@@ -75,6 +76,7 @@ export function CourseAccessManager({ courseId, accessToken }: CourseAccessManag
   const [searchResults, setSearchResults] = useState<TeacherStudentSearchResult[]>([]);
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedCredentials | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const canCreateStudent = useMemo(() => {
     return (
@@ -327,12 +329,23 @@ export function CourseAccessManager({ courseId, accessToken }: CourseAccessManag
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="grid gap-6">
+    <>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6">
         <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Search size={18} className="text-emerald-500" />
-            <h3 className="text-lg font-semibold text-gray-700">Ручное зачисление в курс</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Search size={18} className="text-emerald-500" />
+              <h3 className="text-lg font-semibold text-gray-700">Ручное зачисление в курс</h3>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsImportModalOpen(true)}
+              disabled={!accessToken || loading}
+            >
+              Импорт CSV
+            </Button>
           </div>
           <p className="mt-1 text-sm text-gray-500">
             Найдите существующего студента по имени или группе и зачислите в этот курс.
@@ -598,7 +611,20 @@ export function CourseAccessManager({ courseId, accessToken }: CourseAccessManag
 
       {error ? <p className="text-sm text-red-500 lg:col-span-2">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-500 lg:col-span-2">{notice}</p> : null}
-    </div>
+      </div>
+
+      <StudentImportModal
+        open={isImportModalOpen}
+        accessToken={accessToken}
+        mode="course"
+        courseId={courseId}
+        onClose={() => setIsImportModalOpen(false)}
+        onImported={async () => {
+          await loadData();
+          setNotice('Импорт студентов завершён успешно.');
+        }}
+      />
+    </>
   );
 }
 

@@ -11,6 +11,7 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { StudentProgressDetails } from '@/features/progress/components/student-progress-details';
 import { StudentProgressTable } from '@/features/progress/components/student-progress-table';
 import { KpiGrid } from '@/features/statistics/components/kpi-grid';
+import { StudentImportModal } from '@/features/students/components/student-import-modal';
 import { useAuth } from '@/hooks/use-auth';
 import {
   CourseAnalyticsOverview,
@@ -33,6 +34,7 @@ export default function TeacherCourseAnalyticsPage({
   const [loadingStudent, setLoadingStudent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const loadCourseOverview = useCallback(async () => {
     if (!accessToken) return;
@@ -104,9 +106,9 @@ export default function TeacherCourseAnalyticsPage({
         hint: `Из ${courseOverview.summary.totalPossibleProgress} возможных`,
       },
       {
-        label: 'Прогресс курса',
+        label: 'Общий прогресс курса',
         value: `${courseOverview.summary.completionRatePercent}%`,
-        hint: 'Средний по всем студентам',
+        hint: 'Средний показатель по студентам',
       },
       {
         label: 'Тестовые попытки',
@@ -124,7 +126,7 @@ export default function TeacherCourseAnalyticsPage({
             ? `Аналитика курса: ${courseOverview.course.title}`
             : 'Аналитика курса'
         }
-        description="Карточки, прогресс-бары и подробная аналитика по каждому студенту."
+        description="Ключевые показатели, прогресс и детальная статистика по каждому студенту."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/teacher/courses/${params.courseId}/edit`}>
@@ -133,6 +135,9 @@ export default function TeacherCourseAnalyticsPage({
                 К курсу
               </Button>
             </Link>
+            <Button variant="secondary" onClick={() => setIsImportModalOpen(true)}>
+              Импорт CSV
+            </Button>
             <Button variant="secondary" onClick={() => void loadCourseOverview()}>
               Обновить
             </Button>
@@ -159,9 +164,9 @@ export default function TeacherCourseAnalyticsPage({
           <KpiGrid items={kpis} />
 
           <Card>
-            <h2 className="text-lg font-semibold text-gray-700">Сводка прогресса</h2>
+            <h2 className="text-lg font-semibold text-gray-700">Сводка по прогрессу</h2>
             <p className="mt-1 text-sm text-gray-500">
-              В статистику включены только опубликованные уроки и активные зачисления.
+              В расчеты включены только опубликованные уроки и активные зачисления.
             </p>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -182,9 +187,9 @@ export default function TeacherCourseAnalyticsPage({
           </Card>
 
           <Card>
-            <h2 className="text-lg font-semibold text-gray-700">Все студенты курса</h2>
+            <h2 className="text-lg font-semibold text-gray-700">Студенты курса</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Можно открыть быстрый просмотр ниже или перейти на отдельную страницу студента.
+              Выберите студента в списке для быстрого просмотра или откройте отдельную страницу.
             </p>
             <div className="mt-4">
               <StudentProgressTable
@@ -218,12 +223,22 @@ export default function TeacherCourseAnalyticsPage({
           ) : (
             <Card>
               <p className="text-sm text-gray-500">
-                Выберите студента в таблице, чтобы открыть детальную статистику.
+                Выберите студента в списке, чтобы открыть подробную статистику.
               </p>
             </Card>
           )}
         </>
       ) : null}
+      <StudentImportModal
+        open={isImportModalOpen}
+        accessToken={accessToken}
+        mode="course"
+        courseId={params.courseId}
+        onClose={() => setIsImportModalOpen(false)}
+        onImported={async () => {
+          await loadCourseOverview();
+        }}
+      />
     </div>
   );
 }

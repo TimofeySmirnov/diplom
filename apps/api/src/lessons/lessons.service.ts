@@ -4,7 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EnrollmentStatus, LessonType, Prisma, QuestionType } from '@prisma/client';
+import { EnrollmentStatus, LessonType, Prisma, QuestionType, UserRole } from '@prisma/client';
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { extname, join } from 'path';
+import { randomUUID } from 'crypto';
+import { AuthUser } from '../common/types/auth-user.type';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertTestContentDto } from '../tests/dto/upsert-test-content.dto';
 import { TestsService } from '../tests/tests.service';
@@ -22,6 +26,46 @@ import {
   TestLessonTransfer,
   TestQuestionTransfer,
 } from './types/lesson-transfer.type';
+
+type LectureUploadFile = {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+};
+
+const LECTURE_FILES_DIR = join(process.cwd(), 'static', 'lecture-files');
+const LECTURE_FILES_PUBLIC_PREFIX = '/static/lecture-files/';
+const MAX_LECTURE_FILES = 6;
+const MAX_LECTURE_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+
+const ALLOWED_LECTURE_EXTENSIONS = new Set([
+  '.doc',
+  '.docx',
+  '.pdf',
+  '.ppt',
+  '.pptx',
+  '.xls',
+  '.xlsx',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+]);
+
+const ALLOWED_LECTURE_MIME_TYPES = new Set([
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/pdf',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/octet-stream',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
 
 
 const lessonInclude = {
@@ -82,6 +126,113 @@ export class LessonsService {
             }
           : undefined,
     });
+  }
+
+  async uploadLectureFiles(
+    user: AuthUser,
+    lessonId: string,
+    files: LectureUploadFile[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('Не выбраны файлы для загрузки.');
+    }
+
+    const managedLecture = await this.getManagedLectureForAttachments(user, lessonId);
+    const existingAttachments = [...managedLecture.attachments];
+
+    if (existingAttachments.length + files.length > MAX_LECTURE_FILES) {
+      throw new BadRequestException(
+        `Максимум ${MAX_LECTURE_FILES} файлов на одну лекцию.`,
+      );
+    }
+
+    for (const file of files) {
+      this.validateLectureFile(file);
+    }
+
+    await mkdir(LECTURE_FILES_DIR, { recursive: true });
+
+    const createdUrls: string[] = [];
+
+    try {
+      for (const file of files) {
+        const extension = extname(file.originalname).toLowerCase();
+        const uniqueName = `${Date.now()}-${randomUUID()}${extension}`;
+        const diskPath = join(LECTURE_FILES_DIR, uniqueName);
+
+        await writeFile(diskPath, file.buffer);
+        createdUrls.push(`${LECTURE_FILES_PUBLIC_PREFIX}${uniqueName}`);
+      }
+
+      const updated = await this.prisma.$transaction(async (tx) => {
+        return tx.lectureLesson.update({
+          where: { lessonId: managedLecture.lessonId },
+          data: {
+            attachments: [...existingAttachments, ...createdUrls],
+          },
+          select: {
+            lessonId: true,
+            attachments: true,
+          },
+        });
+      });
+
+      return updated;
+    } catch (error) {
+      await Promise.all(
+        createdUrls.map(async (url) => {
+          const fileName = this.extractLectureAttachmentFileName(url);
+          if (!fileName) return;
+
+          const diskPath = join(LECTURE_FILES_DIR, fileName);
+          try {
+            await unlink(diskPath);
+          } catch {
+            // best effort cleanup
+          }
+        }),
+      );
+
+      throw error;
+    }
+  }
+
+  async deleteLectureFile(user: AuthUser, lessonId: string, fileUrl: string) {
+    const managedLecture = await this.getManagedLectureForAttachments(user, lessonId);
+    const normalizedUrl = fileUrl.trim();
+
+    const existingAttachments = [...managedLecture.attachments];
+    if (!existingAttachments.includes(normalizedUrl)) {
+      throw new NotFoundException('Файл не найден в списке вложений лекции.');
+    }
+
+    const fileName = this.extractLectureAttachmentFileName(normalizedUrl);
+    if (!fileName) {
+      throw new BadRequestException('Некорректный путь к файлу.');
+    }
+
+    const nextAttachments = existingAttachments.filter((item) => item !== normalizedUrl);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.lectureLesson.update({
+        where: { lessonId: managedLecture.lessonId },
+        data: {
+          attachments: nextAttachments,
+        },
+      });
+    });
+
+    const diskPath = join(LECTURE_FILES_DIR, fileName);
+    try {
+      await unlink(diskPath);
+    } catch {
+      // file might have been already removed
+    }
+
+    return {
+      lessonId: managedLecture.lessonId,
+      attachments: nextAttachments,
+    };
   }
 
   async createWebinar(teacherId: string, dto: CreateWebinarLessonDto) {
@@ -1125,6 +1276,87 @@ export class LessonsService {
       throw new BadRequestException(`${path} must be an integer`);
     }
     return numeric;
+  }
+
+  private validateLectureFile(file: LectureUploadFile) {
+    const extension = extname(file.originalname).toLowerCase();
+
+    if (!ALLOWED_LECTURE_EXTENSIONS.has(extension)) {
+      throw new BadRequestException(
+        `Недопустимый тип файла: ${file.originalname}`,
+      );
+    }
+
+    if (file.size > MAX_LECTURE_FILE_SIZE_BYTES) {
+      throw new BadRequestException(
+        `Файл ${file.originalname} превышает 20 МБ.`,
+      );
+    }
+
+    if (!ALLOWED_LECTURE_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException(
+        `Недопустимый MIME-тип файла: ${file.originalname}`,
+      );
+    }
+  }
+
+  private extractLectureAttachmentFileName(fileUrl: string) {
+    if (!fileUrl.startsWith(LECTURE_FILES_PUBLIC_PREFIX)) {
+      return null;
+    }
+
+    const fileName = fileUrl.slice(LECTURE_FILES_PUBLIC_PREFIX.length);
+    if (!fileName || fileName.includes('/') || fileName.includes('\\')) {
+      return null;
+    }
+
+    return fileName;
+  }
+
+  private async getManagedLectureForAttachments(user: AuthUser, lessonId: string) {
+    const lectureLesson = await this.prisma.lectureLesson.findUnique({
+      where: { lessonId },
+      select: {
+        lessonId: true,
+        attachments: true,
+        lesson: {
+          select: {
+            id: true,
+            type: true,
+            module: {
+              select: {
+                course: {
+                  select: {
+                    teacherId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!lectureLesson || !lectureLesson.lesson) {
+      throw new NotFoundException('Лекция не найдена');
+    }
+
+    if (lectureLesson.lesson.type !== LessonType.LECTURE) {
+      throw new BadRequestException('Урок не является лекцией');
+    }
+
+    if (
+      user.role === UserRole.TEACHER &&
+      lectureLesson.lesson.module.course.teacherId !== user.userId
+    ) {
+      throw new ForbiddenException('Можно изменять файлы только в своих курсах');
+    }
+
+    if (user.role !== UserRole.TEACHER && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Недостаточно прав для изменения файлов лекции');
+    }
+
+    return lectureLesson;
   }
 
   private async assertTeacherOwnsModule(
