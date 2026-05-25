@@ -136,6 +136,7 @@ export type StudentTestPayload = {
     scorePercent?: number | null;
     isPassed?: boolean | null;
     startedAt: string;
+    expiresAt?: string | null;
     submittedAt?: string | null;
   }>;
 };
@@ -148,6 +149,7 @@ export type StartTestAttemptResponse = {
   attemptNumber: number;
   status: 'IN_PROGRESS' | 'SUBMITTED';
   startedAt: string;
+  expiresAt?: string | null;
   submittedAt?: string | null;
 };
 

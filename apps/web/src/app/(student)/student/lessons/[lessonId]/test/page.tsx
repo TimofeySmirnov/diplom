@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -28,6 +28,8 @@ type QuestionAnswerState = {
 
 type AnswersState = Record<string, QuestionAnswerState>;
 
+type SubmitMode = 'manual' | 'auto';
+
 export default function StudentTestPage({ params }: StudentTestPageProps) {
   const router = useRouter();
   const { accessToken, hydrated } = useAuth();
@@ -35,13 +37,16 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
   const [testData, setTestData] = useState<StudentTestPayload | null>(null);
   const [answers, setAnswers] = useState<AnswersState>({});
   const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadTest = useCallback(async () => {
-    if (!accessToken) return;
+  const autoSubmitAttemptRef = useRef<string | null>(null);
+
+  const loadTest = useCallback(async (): Promise<StudentTestPayload | null> => {
+    if (!accessToken) return null;
 
     setLoading(true);
     setError(null);
@@ -67,8 +72,11 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
         };
       });
       setAnswers(initialAnswers);
+
+      return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить тест');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -84,40 +92,80 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
     [testData],
   );
 
-  const canStartAttempt = useMemo(() => {
-    if (!testData) return false;
-    if (attemptId) return false;
+  const activeAttempt = useMemo(() => {
+    if (!testData || !attemptId) return null;
+    return (
+      testData.attempts.find(
+        (attempt) => attempt.id === attemptId && attempt.status === 'IN_PROGRESS',
+      ) ?? null
+    );
+  }, [testData, attemptId]);
+
+  const maxAttempts = testData?.settings.maxAttempts ?? null;
+  const attemptsUsed = testData?.attempts.length ?? 0;
+  const hasAttemptLimit = maxAttempts !== null && maxAttempts !== undefined;
+  const isAttemptsLimitReached = hasAttemptLimit ? attemptsUsed >= maxAttempts : false;
+
+  const startBlockedReason = useMemo(() => {
+    if (!testData) return null;
+    if (attemptId) return 'Попытка уже запущена';
 
     if (!testData.settings.allowMultipleAttempts && submittedAttempts.length > 0) {
-      return false;
+      return 'Повторные попытки отключены для этого теста';
     }
 
-    if (
-      testData.settings.maxAttempts !== null &&
-      testData.settings.maxAttempts !== undefined &&
-      testData.attempts.length >= testData.settings.maxAttempts
-    ) {
-      return false;
+    if (hasAttemptLimit && isAttemptsLimitReached) {
+      return 'Лимит попыток исчерпан';
     }
 
-    return true;
-  }, [testData, attemptId, submittedAttempts.length]);
+    return null;
+  }, [
+    testData,
+    attemptId,
+    submittedAttempts.length,
+    hasAttemptLimit,
+    isAttemptsLimitReached,
+  ]);
 
-  const startAttempt = async () => {
-    if (!accessToken || !testData) return;
+  const canStartAttempt = Boolean(testData) && !startBlockedReason;
 
-    setStarting(true);
-    setError(null);
+  const activeAttemptExpiresAtMs = useMemo(() => {
+    if (!testData || !activeAttempt) return null;
 
-    try {
-      const attempt = await testsApi.startAttempt(accessToken, testData.lesson.id);
-      setAttemptId(attempt.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось начать попытку');
-    } finally {
-      setStarting(false);
+    if (activeAttempt.expiresAt) {
+      const parsed = new Date(activeAttempt.expiresAt).getTime();
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
     }
-  };
+
+    if (!testData.settings.timeLimitMinutes) {
+      return null;
+    }
+
+    return (
+      new Date(activeAttempt.startedAt).getTime() +
+      testData.settings.timeLimitMinutes * 60_000
+    );
+  }, [testData, activeAttempt]);
+
+  const remainingTimeMs = useMemo(() => {
+    if (activeAttemptExpiresAtMs === null) return null;
+    return Math.max(activeAttemptExpiresAtMs - nowTs, 0);
+  }, [activeAttemptExpiresAtMs, nowTs]);
+
+  const hasTimerExpired = remainingTimeMs !== null && remainingTimeMs <= 0;
+
+  useEffect(() => {
+    if (activeAttemptExpiresAtMs === null) return;
+    setNowTs(Date.now());
+
+    const interval = window.setInterval(() => {
+      setNowTs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [activeAttemptExpiresAtMs]);
 
   const selectSingleOption = (questionId: string, optionId: string) => {
     setAnswers((prev) => ({
@@ -188,56 +236,127 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
     });
   };
 
-  const submitAttempt = async () => {
-    if (!accessToken || !testData || !attemptId) return;
+  const submitAttempt = useCallback(
+    async (mode: SubmitMode) => {
+      if (!accessToken || !testData || !attemptId) return;
 
-    setSubmitting(true);
+      setSubmitting(true);
+      setError(null);
+
+      try {
+        const payload = {
+          answers: testData.questions.map((question) => {
+            const answer = answers[question.id];
+
+            if (question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') {
+              return {
+                questionId: question.id,
+                optionIds: answer?.optionIds ?? [],
+              };
+            }
+
+            if (question.type === 'FREE_TEXT') {
+              return {
+                questionId: question.id,
+                textAnswer: answer?.textAnswer ?? '',
+              };
+            }
+
+            if (question.type === 'MATCHING') {
+              return {
+                questionId: question.id,
+                matchingPairs: (answer?.matchingPairs ?? [])
+                  .filter((pair) => pair.rightId)
+                  .map((pair) => ({
+                    leftId: pair.leftId,
+                    rightId: pair.rightId,
+                  })),
+              };
+            }
+
+            return {
+              questionId: question.id,
+              orderingItemIds: answer?.orderingItemIds ?? [],
+            };
+          }),
+        };
+
+        const submitted = await testsApi.submitAttempt(accessToken, attemptId, payload);
+        router.push(`/student/lessons/${testData.lesson.id}/test/result/${submitted.attempt.id}`);
+      } catch (err) {
+        if (mode === 'auto') {
+          autoSubmitAttemptRef.current = null;
+
+          const freshData = await loadTest();
+          const fallbackSubmitted = freshData?.attempts.find(
+            (attempt) => attempt.status === 'SUBMITTED',
+          );
+
+          if (fallbackSubmitted) {
+            router.push(
+              `/student/lessons/${params.lessonId}/test/result/${fallbackSubmitted.id}`,
+            );
+            return;
+          }
+        }
+
+        setError(err instanceof Error ? err.message : 'Не удалось отправить тест');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [accessToken, answers, attemptId, loadTest, params.lessonId, router, testData],
+  );
+
+  useEffect(() => {
+    if (!attemptId) {
+      autoSubmitAttemptRef.current = null;
+      return;
+    }
+
+    if (remainingTimeMs === null || remainingTimeMs > 0) return;
+    if (autoSubmitAttemptRef.current === attemptId) return;
+
+    autoSubmitAttemptRef.current = attemptId;
+    void submitAttempt('auto');
+  }, [attemptId, remainingTimeMs, submitAttempt]);
+
+  const startAttempt = async () => {
+    if (!accessToken || !testData) return;
+
+    setStarting(true);
     setError(null);
 
     try {
-      const payload = {
-        answers: testData.questions.map((question) => {
-          const answer = answers[question.id];
+      const attempt = await testsApi.startAttempt(accessToken, testData.lesson.id);
+      setAttemptId(attempt.id);
 
-          if (question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') {
-            return {
-              questionId: question.id,
-              optionIds: answer?.optionIds ?? [],
-            };
-          }
+      setTestData((prev) => {
+        if (!prev) return prev;
 
-          if (question.type === 'FREE_TEXT') {
-            return {
-              questionId: question.id,
-              textAnswer: answer?.textAnswer ?? '',
-            };
-          }
+        const nextAttempt = {
+          id: attempt.id,
+          attemptNumber: attempt.attemptNumber,
+          status: attempt.status,
+          score: null,
+          maxScore: null,
+          scorePercent: null,
+          isPassed: null,
+          startedAt: attempt.startedAt,
+          expiresAt: attempt.expiresAt ?? null,
+          submittedAt: attempt.submittedAt ?? null,
+        } as StudentTestPayload['attempts'][number];
 
-          if (question.type === 'MATCHING') {
-            return {
-              questionId: question.id,
-              matchingPairs: (answer?.matchingPairs ?? [])
-                .filter((pair) => pair.rightId)
-                .map((pair) => ({
-                  leftId: pair.leftId,
-                  rightId: pair.rightId,
-                })),
-            };
-          }
-
-          return {
-            questionId: question.id,
-            orderingItemIds: answer?.orderingItemIds ?? [],
-          };
-        }),
-      };
-
-      const submitted = await testsApi.submitAttempt(accessToken, attemptId, payload);
-      router.push(`/student/lessons/${testData.lesson.id}/test/result/${submitted.attempt.id}`);
+        const filtered = prev.attempts.filter((item) => item.id !== attempt.id);
+        return {
+          ...prev,
+          attempts: [nextAttempt, ...filtered],
+        };
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось отправить тест');
+      setError(err instanceof Error ? err.message : 'Не удалось начать попытку');
     } finally {
-      setSubmitting(false);
+      setStarting(false);
     }
   };
 
@@ -285,11 +404,41 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
                 <Badge tone="neutral">{testData.settings.timeLimitMinutes} мин</Badge>
               ) : null}
             </div>
+
             {testData.lesson.description ? (
               <p className="mt-3 text-sm text-gray-500">{testData.lesson.description}</p>
             ) : null}
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 grid gap-1 text-sm text-gray-700">
+              {hasAttemptLimit ? (
+                <>
+                  {activeAttempt ? (
+                    <p className="font-medium">
+                      Попытка {activeAttempt.attemptNumber} из {maxAttempts}
+                    </p>
+                  ) : null}
+                  <p className="text-gray-500">
+                    Использовано {attemptsUsed}/{maxAttempts} попыток
+                  </p>
+                </>
+              ) : (
+                <p className="text-gray-500">Без ограничения попыток</p>
+              )}
+
+              {remainingTimeMs !== null ? (
+                <p
+                  className={
+                    remainingTimeMs <= 60_000
+                      ? 'font-medium text-yellow-500'
+                      : 'text-gray-700'
+                  }
+                >
+                  Осталось времени: {formatCountdown(remainingTimeMs)}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               {!attemptId ? (
                 <Button onClick={() => void startAttempt()} disabled={!canStartAttempt || starting}>
                   {starting ? 'Запуск...' : 'Начать тест'}
@@ -298,6 +447,16 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
                 <Badge tone="warning">Попытка в процессе</Badge>
               )}
             </div>
+
+            {startBlockedReason && !attemptId ? (
+              <p className="mt-2 text-sm text-red-500">{startBlockedReason}</p>
+            ) : null}
+
+            {isAttemptsLimitReached && !attemptId ? (
+              <p className="mt-1 text-xs text-gray-500">
+                Новая попытка недоступна, лимит исчерпан.
+              </p>
+            ) : null}
           </Card>
 
           {attemptId ? (
@@ -307,7 +466,7 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
                 Ответьте на вопросы и отправьте тест для получения результата.
               </p>
 
-              <div className="mt-4 grid gap-4">
+              <fieldset disabled={submitting || hasTimerExpired} className="mt-4 grid gap-4">
                 {testData.questions.map((question, index) => (
                   <div key={question.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                     <div className="flex flex-wrap items-center gap-2">
@@ -433,12 +592,18 @@ export default function StudentTestPage({ params }: StudentTestPageProps) {
                     ) : null}
                   </div>
                 ))}
-              </div>
+              </fieldset>
 
               <div className="mt-5">
-                <Button onClick={() => void submitAttempt()} disabled={submitting}>
+                <Button
+                  onClick={() => void submitAttempt('manual')}
+                  disabled={submitting || hasTimerExpired}
+                >
                   {submitting ? 'Отправка...' : 'Отправить тест'}
                 </Button>
+                {hasTimerExpired ? (
+                  <p className="mt-2 text-sm text-yellow-500">Время вышло. Завершаем попытку...</p>
+                ) : null}
               </div>
             </Card>
           ) : null}
@@ -480,6 +645,21 @@ function typeLabel(type: StudentTestPayload['questions'][number]['type']) {
   if (type === 'FREE_TEXT') return 'Свободный ответ';
   if (type === 'MATCHING') return 'Сопоставление';
   return 'Порядок';
+}
+
+function formatCountdown(milliseconds: number) {
+  const totalSeconds = Math.max(Math.floor(milliseconds / 1000), 0);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(
+      seconds,
+    ).padStart(2, '0')}`;
+  }
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 function LoadingBlock() {

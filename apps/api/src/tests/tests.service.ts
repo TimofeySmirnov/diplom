@@ -32,6 +32,18 @@ type OrderingItem = {
   text: string;
 };
 
+type AttemptWithQuestions = Prisma.TestAttemptGetPayload<{
+  include: {
+    testLesson: {
+      include: {
+        questions: {
+          include: { options: true };
+        };
+      };
+    };
+  };
+}>;
+
 @Injectable()
 export class TestsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -166,6 +178,11 @@ export class TestsService {
 
   async getStudentTestForPassing(studentId: string, lessonId: string) {
     const context = await this.getStudentTestContext(studentId, lessonId);
+    await this.finalizeExpiredAttemptsForStudentLesson(
+      studentId,
+      lessonId,
+      context.testLesson.timeLimitMinutes,
+    );
 
     const questions = await this.prisma.testQuestion.findMany({
       where: {
@@ -254,7 +271,7 @@ export class TestsService {
       };
     });
 
-    const attempts = await this.prisma.testAttempt.findMany({
+    const rawAttempts = await this.prisma.testAttempt.findMany({
       where: {
         studentId,
         testLessonId: lessonId,
@@ -272,6 +289,13 @@ export class TestsService {
         submittedAt: true,
       },
     });
+
+    const attempts = rawAttempts.map((attempt) =>
+      this.mapAttemptWithExpiresAt(
+        attempt,
+        context.testLesson.timeLimitMinutes,
+      ),
+    );
 
     return {
       lesson: {
@@ -298,6 +322,11 @@ export class TestsService {
 
   async startAttempt(studentId: string, lessonId: string) {
     const context = await this.getStudentTestContext(studentId, lessonId);
+    await this.finalizeExpiredAttemptsForStudentLesson(
+      studentId,
+      lessonId,
+      context.testLesson.timeLimitMinutes,
+    );
 
     const existingInProgress = await this.prisma.testAttempt.findFirst({
       where: {
@@ -309,7 +338,10 @@ export class TestsService {
     });
 
     if (existingInProgress) {
-      return existingInProgress;
+      return this.mapAttemptWithExpiresAt(
+        existingInProgress,
+        context.testLesson.timeLimitMinutes,
+      );
     }
 
     const questionsCount = await this.prisma.testQuestion.count({
@@ -395,7 +427,10 @@ export class TestsService {
       });
     }
 
-    return attempt;
+    return this.mapAttemptWithExpiresAt(
+      attempt,
+      context.testLesson.timeLimitMinutes,
+    );
   }
 
   async submitAttempt(
@@ -429,125 +464,26 @@ export class TestsService {
       throw new BadRequestException('This attempt is already submitted');
     }
 
-    const scoreResult = this.calculateScore(attempt.testLesson.questions, dto.answers);
+    if (
+      this.isAttemptExpired(
+        attempt.startedAt,
+        attempt.testLesson.timeLimitMinutes,
+      )
+    ) {
+      return this.finalizeAttempt(attempt, []);
+    }
 
-    return this.prisma.$transaction(async (tx) => {
-      await tx.testAttemptAnswer.deleteMany({
-        where: { attemptId: attempt.id },
-      });
-
-      for (const answerResult of scoreResult.answerResults) {
-        const createdAnswer = await tx.testAttemptAnswer.create({
-          data: {
-            attemptId: attempt.id,
-            questionId: answerResult.questionId,
-            isCorrect: answerResult.isCorrect,
-            pointsAwarded: answerResult.pointsAwarded,
-            textAnswer: answerResult.textAnswer,
-            matchingAnswer: answerResult.matchingPairs,
-            orderingAnswer: answerResult.orderingItemIds,
-          },
-        });
-
-        if (answerResult.optionIds.length > 0) {
-          await tx.testAttemptAnswerOption.createMany({
-            data: answerResult.optionIds.map((optionId) => ({
-              attemptAnswerId: createdAnswer.id,
-              optionId,
-            })),
-          });
-        }
-      }
-
-      const updatedAttempt = await tx.testAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          status: TestAttemptStatus.SUBMITTED,
-          submittedAt: new Date(),
-          score: scoreResult.score,
-          maxScore: scoreResult.maxScore,
-          scorePercent: scoreResult.scorePercent,
-          isPassed:
-            attempt.testLesson.passingScore === null ||
-            scoreResult.score >= attempt.testLesson.passingScore,
-        },
-        include: {
-          answers: {
-            include: {
-              selectedOptions: true,
-            },
-          },
-        },
-      });
-
-      const existingProgress = await tx.lessonProgress.findUnique({
-        where: {
-          studentId_lessonId: {
-            studentId,
-            lessonId: attempt.testLessonId,
-          },
-        },
-      });
-
-      const hasBetterScore =
-        existingProgress?.bestTestScore === null ||
-        existingProgress?.bestTestScore === undefined ||
-        scoreResult.score > existingProgress.bestTestScore;
-
-      await tx.lessonProgress.upsert({
-        where: {
-          studentId_lessonId: {
-            studentId,
-            lessonId: attempt.testLessonId,
-          },
-        },
-        create: {
-          enrollmentId: attempt.enrollmentId,
-          studentId,
-          lessonId: attempt.testLessonId,
-          status: LessonProgressStatus.COMPLETED,
-          startedAt: attempt.startedAt,
-          lastViewedAt: new Date(),
-          completedAt: new Date(),
-          attemptsCount: 1,
-          bestTestScore: scoreResult.score,
-          bestTestMaxScore: scoreResult.maxScore,
-        },
-        update: {
-          status: LessonProgressStatus.COMPLETED,
-          lastViewedAt: new Date(),
-          completedAt: new Date(),
-          attemptsCount: { increment: 1 },
-          bestTestScore: hasBetterScore
-            ? scoreResult.score
-            : existingProgress?.bestTestScore,
-          bestTestMaxScore: hasBetterScore
-            ? scoreResult.maxScore
-            : existingProgress?.bestTestMaxScore,
-        },
-      });
-
-      const result = this.buildResultPayload(
-        attempt.testLesson.questions,
-        scoreResult.answerResults,
-      );
-
-      return {
-        attempt: updatedAttempt,
-        result: {
-          score: scoreResult.score,
-          maxScore: scoreResult.maxScore,
-          scorePercent: scoreResult.scorePercent,
-          isPassed:
-            attempt.testLesson.passingScore === null ||
-            scoreResult.score >= attempt.testLesson.passingScore,
-          questions: result,
-        },
-      };
-    });
+    return this.finalizeAttempt(attempt, dto.answers);
   }
 
   async listMyAttempts(studentId: string, lessonId: string) {
+    const context = await this.getStudentTestContext(studentId, lessonId);
+    await this.finalizeExpiredAttemptsForStudentLesson(
+      studentId,
+      lessonId,
+      context.testLesson.timeLimitMinutes,
+    );
+
     return this.prisma.testAttempt.findMany({
       where: {
         studentId,
@@ -749,6 +685,230 @@ export class TestsService {
         },
       },
     });
+  }
+
+  private async finalizeExpiredAttemptsForStudentLesson(
+    studentId: string,
+    lessonId: string,
+    timeLimitMinutes: number | null | undefined,
+  ) {
+    if (!timeLimitMinutes || timeLimitMinutes <= 0) {
+      return;
+    }
+
+    const inProgressAttempts = await this.prisma.testAttempt.findMany({
+      where: {
+        studentId,
+        testLessonId: lessonId,
+        status: TestAttemptStatus.IN_PROGRESS,
+      },
+      orderBy: { startedAt: 'asc' },
+      include: {
+        testLesson: {
+          include: {
+            questions: {
+              orderBy: { order: 'asc' },
+              include: {
+                options: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    for (const attempt of inProgressAttempts) {
+      if (
+        !this.isAttemptExpired(
+          attempt.startedAt,
+          attempt.testLesson.timeLimitMinutes,
+        )
+      ) {
+        continue;
+      }
+
+      try {
+        await this.finalizeAttempt(attempt, []);
+      } catch (error) {
+        if (error instanceof BadRequestException) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  private async finalizeAttempt(
+    attempt: AttemptWithQuestions,
+    answers: SubmitQuestionAnswerDto[],
+  ) {
+    const scoreResult = this.calculateScore(attempt.testLesson.questions, answers);
+    const completedAt = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.testAttemptAnswer.deleteMany({
+        where: { attemptId: attempt.id },
+      });
+
+      for (const answerResult of scoreResult.answerResults) {
+        const createdAnswer = await tx.testAttemptAnswer.create({
+          data: {
+            attemptId: attempt.id,
+            questionId: answerResult.questionId,
+            isCorrect: answerResult.isCorrect,
+            pointsAwarded: answerResult.pointsAwarded,
+            textAnswer: answerResult.textAnswer,
+            matchingAnswer: answerResult.matchingPairs,
+            orderingAnswer: answerResult.orderingItemIds,
+          },
+        });
+
+        if (answerResult.optionIds.length > 0) {
+          await tx.testAttemptAnswerOption.createMany({
+            data: answerResult.optionIds.map((optionId) => ({
+              attemptAnswerId: createdAnswer.id,
+              optionId,
+            })),
+          });
+        }
+      }
+
+      const attemptUpdateResult = await tx.testAttempt.updateMany({
+        where: {
+          id: attempt.id,
+          status: TestAttemptStatus.IN_PROGRESS,
+        },
+        data: {
+          status: TestAttemptStatus.SUBMITTED,
+          submittedAt: completedAt,
+          score: scoreResult.score,
+          maxScore: scoreResult.maxScore,
+          scorePercent: scoreResult.scorePercent,
+          isPassed:
+            attempt.testLesson.passingScore === null ||
+            scoreResult.score >= attempt.testLesson.passingScore,
+        },
+      });
+
+      if (attemptUpdateResult.count === 0) {
+        throw new BadRequestException('This attempt is already submitted');
+      }
+
+      const existingProgress = await tx.lessonProgress.findUnique({
+        where: {
+          studentId_lessonId: {
+            studentId: attempt.studentId,
+            lessonId: attempt.testLessonId,
+          },
+        },
+      });
+
+      const hasBetterScore =
+        existingProgress?.bestTestScore === null ||
+        existingProgress?.bestTestScore === undefined ||
+        scoreResult.score > existingProgress.bestTestScore;
+
+      await tx.lessonProgress.upsert({
+        where: {
+          studentId_lessonId: {
+            studentId: attempt.studentId,
+            lessonId: attempt.testLessonId,
+          },
+        },
+        create: {
+          enrollmentId: attempt.enrollmentId,
+          studentId: attempt.studentId,
+          lessonId: attempt.testLessonId,
+          status: LessonProgressStatus.COMPLETED,
+          startedAt: attempt.startedAt,
+          lastViewedAt: completedAt,
+          completedAt,
+          attemptsCount: 1,
+          bestTestScore: scoreResult.score,
+          bestTestMaxScore: scoreResult.maxScore,
+        },
+        update: {
+          status: LessonProgressStatus.COMPLETED,
+          lastViewedAt: completedAt,
+          completedAt,
+          attemptsCount: { increment: 1 },
+          bestTestScore: hasBetterScore
+            ? scoreResult.score
+            : existingProgress?.bestTestScore,
+          bestTestMaxScore: hasBetterScore
+            ? scoreResult.maxScore
+            : existingProgress?.bestTestMaxScore,
+        },
+      });
+
+      const updatedAttempt = await tx.testAttempt.findUnique({
+        where: { id: attempt.id },
+        include: {
+          answers: {
+            include: {
+              selectedOptions: true,
+            },
+          },
+        },
+      });
+
+      if (!updatedAttempt) {
+        throw new NotFoundException('Test attempt not found');
+      }
+
+      const result = this.buildResultPayload(
+        attempt.testLesson.questions,
+        scoreResult.answerResults,
+      );
+
+      return {
+        attempt: updatedAttempt,
+        result: {
+          score: scoreResult.score,
+          maxScore: scoreResult.maxScore,
+          scorePercent: scoreResult.scorePercent,
+          isPassed:
+            attempt.testLesson.passingScore === null ||
+            scoreResult.score >= attempt.testLesson.passingScore,
+          questions: result,
+        },
+      };
+    });
+  }
+
+  private mapAttemptWithExpiresAt<T extends { startedAt: Date }>(
+    attempt: T,
+    timeLimitMinutes: number | null | undefined,
+  ) {
+    return {
+      ...attempt,
+      expiresAt: this.resolveAttemptExpiresAt(
+        attempt.startedAt,
+        timeLimitMinutes,
+      ),
+    };
+  }
+
+  private isAttemptExpired(
+    startedAt: Date,
+    timeLimitMinutes: number | null | undefined,
+    now: Date = new Date(),
+  ) {
+    const expiresAt = this.resolveAttemptExpiresAt(startedAt, timeLimitMinutes);
+    if (!expiresAt) {
+      return false;
+    }
+    return expiresAt.getTime() <= now.getTime();
+  }
+
+  private resolveAttemptExpiresAt(
+    startedAt: Date,
+    timeLimitMinutes: number | null | undefined,
+  ) {
+    if (!timeLimitMinutes || timeLimitMinutes <= 0) {
+      return null;
+    }
+    return new Date(startedAt.getTime() + timeLimitMinutes * 60_000);
   }
 
   private async getStudentTestContext(studentId: string, lessonId: string) {
