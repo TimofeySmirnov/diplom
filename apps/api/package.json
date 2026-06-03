@@ -6,7 +6,11 @@
     "start:dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "seed:admin": "ts-node prisma/seed.ts"
+    "migrate:deploy": "prisma migrate deploy",
+    "db:check": "prisma db execute --schema prisma/schema.prisma --stdin",
+    "seed:admin": "ts-node prisma/seed-admin.ts",
+    "seed:demo": "ts-node prisma/seed.ts",
+    "admin:create": "ts-node prisma/create-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.8",

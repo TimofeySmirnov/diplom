@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+import { getApiBaseUrl } from './base-url';
 
 type StudentImportRequestContext = {
   token: string;
@@ -60,7 +60,7 @@ export const studentImportApi = {
     ),
 
   downloadResultFile: async (token: string, downloadId: string, fallbackFileName?: string) => {
-    const response = await fetch(`${API_BASE_URL}/users/students/import/download/${downloadId}`, {
+    const response = await fetch(`${getApiBaseUrl()}/users/students/import/download/${downloadId}`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -88,7 +88,7 @@ export const studentImportApi = {
 };
 
 async function previewStudents(path: string, context: StudentImportRequestContext, file: File) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${context.token}`,
@@ -109,7 +109,7 @@ async function importStudents(
   file: File,
   enrollToCourse?: boolean,
 ) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${context.token}`,

@@ -1,7 +1,6 @@
 import { Lesson, LessonType } from '@/types/domain';
+import { getApiBaseUrl, getApiOrigin } from './base-url';
 import { apiRequest } from './client';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
 export type LessonLecturePayload = {
   content: Record<string, unknown>;
@@ -309,7 +308,7 @@ export const lessonsApi = {
       formData.append('files', file);
     }
 
-    const response = await fetch(`${API_BASE_URL}/lectures/${lessonId}/files`, {
+    const response = await fetch(`${getApiBaseUrl()}/lectures/${lessonId}/files`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -325,7 +324,7 @@ export const lessonsApi = {
   },
 
   deleteLectureFile: async (token: string, lessonId: string, fileUrl: string) => {
-    const response = await fetch(`${API_BASE_URL}/lectures/${lessonId}/files`, {
+    const response = await fetch(`${getApiBaseUrl()}/lectures/${lessonId}/files`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -349,7 +348,8 @@ export function resolveStaticFileUrl(fileUrl: string) {
   }
 
   try {
-    const origin = new URL(API_BASE_URL).origin;
+    const origin = getApiOrigin();
+    if (!origin) return fileUrl;
     return `${origin}${fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`}`;
   } catch {
     return fileUrl;

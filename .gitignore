@@ -1,2 +1,9 @@
 node_modules
-docs
+__pycache__
+*.pyc
+dist
+build
+.launcher
+launcher.log
+*.spec.bak
+apps/api/.env.backup-*

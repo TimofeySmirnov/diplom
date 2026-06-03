@@ -11,6 +11,16 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import {
+  ensureAdmin,
+  findAnyAdmin,
+  findUserByEmail,
+  readDefaultAdminEmailFromEnv,
+  readDefaultAdminInputFromEnv,
+} from './admin-utils';
+import { loadLocalEnv } from './load-env';
+
+loadLocalEnv();
 
 const prisma = new PrismaClient();
 const SALT_ROUNDS = 10;
@@ -432,18 +442,27 @@ const COURSES: CourseSeed[] = [
 ];
 
 async function main() {
-  const adminEmail = (process.env.ADMIN_EMAIL ?? 'admin@zskills.local').toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD ?? 'Admin12345!';
-  const adminName = process.env.ADMIN_FULL_NAME ?? 'Главный администратор';
+  const defaultAdminInput = readDefaultAdminInputFromEnv();
+  let defaultAdminUser: EnsuredUser | null = null;
+
+  if (defaultAdminInput) {
+    const ensuredDefaultAdmin = await ensureAdmin(prisma, defaultAdminInput);
+    if (ensuredDefaultAdmin.status === 'email_taken') {
+      throw new Error(
+        `User ${ensuredDefaultAdmin.email} already exists with role ${ensuredDefaultAdmin.role}. Default administrator was not created.`,
+      );
+    }
+    defaultAdminUser = ensuredDefaultAdmin.user;
+  } else {
+    defaultAdminUser = await findUserByEmail(prisma, readDefaultAdminEmailFromEnv())
+      ?? await findAnyAdmin(prisma);
+  }
+
+  if (!defaultAdminUser || defaultAdminUser.role !== UserRole.ADMIN) {
+    throw new Error('ADMIN_PASSWORD must be set in apps/api/.env before running the demo seed.');
+  }
 
   const users: UserSeed[] = [
-    {
-      key: 'admin',
-      email: adminEmail,
-      fullName: adminName,
-      role: UserRole.ADMIN,
-      password: adminPassword,
-    },
     {
       key: 'teacher',
       email: 'teacher.demo@zskills.local',
@@ -518,6 +537,7 @@ async function main() {
   ];
 
   const usersByKey = new Map<string, EnsuredUser>();
+  usersByKey.set('admin', defaultAdminUser);
   for (const item of users) {
     usersByKey.set(item.key, await ensureUser(item));
   }
@@ -1512,4 +1532,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
