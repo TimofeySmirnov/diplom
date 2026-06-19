@@ -8,9 +8,9 @@
     "start": "node dist/main.js",
     "migrate:deploy": "prisma migrate deploy",
     "db:check": "prisma db execute --schema prisma/schema.prisma --stdin",
-    "seed:admin": "ts-node prisma/seed-admin.ts",
-    "seed:demo": "ts-node prisma/seed.ts",
-    "admin:create": "ts-node prisma/create-admin.ts"
+    "seed:admin": "tsx  prisma/seed-admin.ts",
+    "seed:demo": "tsx  prisma/seed.ts",
+    "admin:create": "tsx  prisma/create-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.8",
@@ -27,6 +27,7 @@
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "tsx": "^4.22.4",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

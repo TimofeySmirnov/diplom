@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: diploma_db
+    restart: always
+    environment:
+      POSTGRES_DB: diplom
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+    ports:
+      - "5432:5432"
+    volumes:
+      - diploma_pg_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./apps/api
+    container_name: diplom_backend
+    restart: always
+    depends_on:
+      - db
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:1234@db:5432/diploma?shema=public
+      JWT_ACCESS_SECRET: change_me_access
+      JWT_REFRESH_SECRET: change_me_refresh
+      ADMIN_PASSWORD: admin123
+    ports:
+      - "4000:4000"
+
+  frontend:
+    build:
+      context: ./apps/web
+    container_name: diplom_frontend
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+
+volumes:
+  diploma_pg_data:
